@@ -1,0 +1,131 @@
+{
+  "workspace_dir": "~/artifacts/20211104-1144",
+  "test_time": "20211104-1144",
+  "cpus_per_container": 1,
+  "docker_network": "testnet",
+  "branch": "trunk",
+  "descriptor_file": "~/upgrade/upgrade-quick.json",
+  "logname": "pytest",
+  "log_out_dir": "~/artifacts/20211104-1144/logs",
+  "hostsfile_path": "$CNT/hostsfile",
+  "grafana_port": "3000",
+  "ned_id_cisco_staros": "cisco-staros",
+  "ned_id_cisco_pnr_rest": "cisco-pnr_rest",
+  "ned_id_etsi_sol003": "etsi-sol003",
+  "ned_id_openstack_cos": "openstack-cos",
+  "influxdb_database": "docker_performance",
+  "installer_local_pre_upgrade": "~/version-5.4.darwin.x86_64.installer.bin",
+  "installer_local_post_upgrade": "~/version-5.7.darwin.x86_64.installer.bin",
+  "group_installers": {
+    "ha1": {
+      "installer": "~/version-5.4.4.linux.x86_64.installer.bin",
+      "installer-upgrade": "~/version-5.7.linux.x86_64.installer.bin"
+    },
+    "ha2": {
+      "installer": "~/version-5.4.4.linux.x86_64.installer.bin",
+      "installer-upgrade": "~/version-5.7.linux.x86_64.installer.bin"
+    },
+    "ha3": {
+      "installer": "~/version-5.4.4.linux.x86_64.installer.bin",
+      "installer-upgrade": "~/version-5.7.linux.x86_64.installer.bin"
+    }
+  },
+  "branch_custom": null,
+  "target_env": "docker-local",
+  "start_time": 1636019058.627888,
+  "version": "5.7",
+  "version_pre_upgrade": "5.4.4",
+  "version_ha1": "5.4.4",
+  "version_ha2": "5.4.4",
+  "version_ha3": "5.4.4",
+  "version_upgrade_ha1": "5.7",
+  "version_upgrade_ha2": "5.7",
+  "version_upgrade_ha3": "5.7",
+  "build_id": "211029.070411939.a381d864620d",
+  "test_id": "upgrade-quick-from-5.4.4-to-5.7_211104.104418627_5.7",
+  "test_description": "Test case for verifying that an upgrade works correctly.",
+  "branch_ha1": "5.4",
+  "branch_ha2": "5.4",
+  "branch_ha3": "5.4",
+  "branch_upgrade_ha1": "5.7",
+  "branch_upgrade_ha2": "5.7",
+  "branch_upgrade_ha3": "5.7",
+  "docker_network_existed_on_start": true,
+  "influxdb_ip": "172.20.0.4",
+  "grafana_hostname": "172.20.0.2",
+  "end_time": 1636019657.867901,
+  "validation_result": {},
+  "validation_errors": [
+    {
+      "error_type": "measurement",
+      "measurement_name": "upgrade-startup-time",
+      "result": "N/A",
+      "threshold": "N/A",
+      "historic_time": null,
+      "start_time": "2021-11-04 10:44:18.627888"
+    },
+    {
+      "error_type": "measurement",
+      "measurement_name": "upgrade-startup-time",
+      "result": "N/A",
+      "threshold": "N/A",
+      "historic_time": null,
+      "start_time": "2021-11-04 10:44:18.627888"
+    },
+    {
+      "error_type": "measurement",
+      "measurement_name": "upgrade-startup-time",
+      "result": "N/A",
+      "threshold": "N/A",
+      "historic_time": null,
+      "start_time": "2021-11-04 10:44:18.627888"
+    },
+    {
+      "error_type": "measurement",
+      "measurement_name": "upgrade-startup-time",
+      "result": "N/A",
+      "threshold": "N/A",
+      "historic_time": null,
+      "start_time": "2021-11-04 10:44:18.627888"
+    },
+    {
+      "error_type": "measurement",
+      "measurement_name": "upgrade-startup-time",
+      "result": "N/A",
+      "threshold": "N/A",
+      "historic_time": null,
+      "start_time": "2021-11-04 10:44:18.627888"
+    },
+    {
+      "error_type": "measurement",
+      "measurement_name": "upgrade-startup-time",
+      "result": "N/A",
+      "threshold": "N/A",
+      "historic_time": null,
+      "start_time": "2021-11-04 10:44:18.627888"
+    }
+  ],
+  "result_to_upload": {
+    "ver": "5.7",
+    "buildid": "211029.070411939",
+    "testid": "upgrade-quick-from-5.4.4-to-5.7",
+    "testdescr": "Test case for verifying that an upgrade works correctly.",
+    "starttime": 1636019058.627888,
+    "endtime": 1636019657.867901,
+    "status": "FAILURE",
+    "logpath": "N/A"
+  },
+  "result": {
+    "ver": "5.7",
+    "buildid": "211029.070411939",
+    "testid": "upgrade-quick-from-5.4.4-to-5.7",
+    "testdescr": "Test case for verifying that an upgrade works correctly.",
+    "starttime": 1636019058.627888,
+    "endtime": 1636019657.867901,
+    "status": "FAILURE",
+    "logpath": "N/A",
+    "version_ha1": "5.4.4",
+    "version_ha2": "5.4.4",
+    "version_ha3": "5.4.4"
+  }
+}

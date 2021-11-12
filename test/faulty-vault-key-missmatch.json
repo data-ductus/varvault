@@ -1,0 +1,5 @@
+{
+  "key_valid_type_is_int": 10,
+  "key_valid_type_is_str": "valid-key",
+  "this_key_doesnt_exist_in_keyring": "n/a"
+}

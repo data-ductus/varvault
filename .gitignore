@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# pytest logs
+logs/
+
+# IntelliJ IDEA folder
+.idea/
