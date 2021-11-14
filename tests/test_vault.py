@@ -518,7 +518,7 @@ class TestLogging:
 
         assert len(open(temp_log_file).readlines()) == 0, f"There appears to be more lines in the log file than what there should be. " \
                                                           f"There should be 0 at most. {varvault.VaultFlags.debug()} with {varvault.VaultFlags.silent()} appears to not function correctly"
-        assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. " \
+        assert len(open(vault_log_file).readlines()) == 12, f"There appears to be fewer lines in the log file than what there should be. " \
                                                             f"There should be 12 at most. {varvault.VaultFlags.debug()} with {varvault.VaultFlags.silent()} appears to not function correctly"
 
     def test_no_logger(self):
@@ -544,14 +544,15 @@ class TestLogging:
         vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), vault_filename_to=vault_file_new)
 
         @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
-        def _set():
+        def _doset():
             return "valid"
-        _set()
-
-        assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. There should be 12 at least."
-        vault_from = varvault.from_vault(Keyring, "from-vault", vault_filename_from=vault_file_new, remove_existing_log_file=True)
+        _doset()
+        with open(vault_log_file) as f1:
+            assert len(f1.readlines()) == 12, f"There should be exactly 12 lines in the log-file."
+        vault_from = varvault.from_vault(Keyring, "vault", vault_filename_from=vault_file_new, remove_existing_log_file=True)
         assert Keyring.key_valid_type_is_str in vault_from
-        assert len(open(vault_log_file).readlines()) >= 2, f"There appears to be more lines in the log file than what there should be. There should be 2 at most. It seems the log file wasn't removed when the new vault was created from the existing file."
+        with open(vault_log_file) as f2:
+            assert len(f2.readlines()) == 3, f"There should be exactly 3 lines in the logfile. It seems the log-file wasn't removed when the new vault was created from the existing vault."
 
     def test_specific_logger(self):
         old_handlers = logger.handlers.copy()

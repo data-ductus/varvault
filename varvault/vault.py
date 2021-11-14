@@ -518,8 +518,8 @@ class VarVault(object):
             # No logger has been assigned for this vault. Just return then.
             return
         if VaultFlags.flag_is_set(VaultFlags.silent(), *all_flags) and VaultFlags.flag_is_set(VaultFlags.debug(), *all_flags):
-            # Don't modify any logging levels; debug and silent cancel each other out
-            pass
+            # Use default logging levels; debug and silent cancel each other out
+            configure_logger(self.logger)
         elif VaultFlags.flag_is_set(VaultFlags.silent(), *all_flags):
             configure_logger(self.logger, overall_level=logging.INFO)
         elif VaultFlags.flag_is_set(VaultFlags.debug(), *all_flags):
