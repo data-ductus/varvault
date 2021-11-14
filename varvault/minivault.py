@@ -1,6 +1,6 @@
 from typing import *
 
-from varvault.keyring import Key
+from .keyring import Key
 
 
 class MiniVault(dict):

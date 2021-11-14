@@ -6,7 +6,7 @@ import time
 import pytest
 import logging
 DIR = os.path.dirname(os.path.realpath(__file__))
-path = f"{os.path.dirname(DIR)}/src"
+path = f"{os.path.dirname(DIR)}"
 temp_path = [path]
 temp_path.extend(sys.path)
 sys.path = temp_path

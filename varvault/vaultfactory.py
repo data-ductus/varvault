@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 
 from typing import *
@@ -95,9 +96,9 @@ def from_vault(keyring: Type[Keyring],
     vault.vault.put(mini)
 
     if len(keys_not_in_keyring) and ignore_keys_not_in_keyring:
-        vault.logger.warning(f"Vault was created from file '{vault_filename_from}', and the file contained keys not in the keyring ({keys_not_in_keyring}), "
-                             f"but you asked to ignore if this happens through setting 'ignore_keys_not_in_keyring' to True.")
+        vault.log(f"Vault was created from file '{vault_filename_from}', and the file contained keys not in the keyring ({keys_not_in_keyring}), "
+                  f"but you asked to ignore if this happens through setting 'ignore_keys_not_in_keyring' to True.", level=logging.WARNING)
     else:
-        vault.logger.info(f"Vault created from file '{vault_filename_from}'.")
+        vault.log(f"Vault created from file '{vault_filename_from}'.", level=logging.INFO)
 
     return vault

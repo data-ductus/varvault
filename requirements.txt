@@ -1,6 +1,7 @@
-setuptools>=42
+setuptools
 wheel
-colorama>=0.4.4
+build
+twine
 pytest>=6.2.1
 pytest-html>=2.1.1
 pytest-metadata>=1.10.0

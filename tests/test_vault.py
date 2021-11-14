@@ -4,11 +4,10 @@ import json
 import pytest
 import logging
 import tempfile
-print(tempfile.tempdir)
 
 
 DIR = os.path.dirname(os.path.realpath(__file__))
-path = f"{os.path.dirname(DIR)}/src"
+path = f"{os.path.dirname(DIR)}"
 temp_path = [path]
 temp_path.extend(sys.path)
 sys.path = temp_path
@@ -173,7 +172,7 @@ class TestVault:
         assert Keyring.key_valid_type_is_str in vault
 
     def test_create_from_vault(self):
-        vault = varvault.from_vault(Keyring, "vault", vault_filename_from=existing_vault)
+        vault = varvault.from_vault(Keyring, "from-vault", vault_filename_from=existing_vault)
         assert Keyring.key_valid_type_is_str in vault
         assert Keyring.key_valid_type_is_int in vault
         assert vault.get(Keyring.key_valid_type_is_str) == "valid"
@@ -182,7 +181,7 @@ class TestVault:
         assert Keyring.key_valid_type_is_str in d and Keyring.key_valid_type_is_int in d, "It appears that loading from the vault file has cleared the vault file unintentionally. This is very bad"
 
     def test_load_from_one_write_to_another(self):
-        vault = varvault.from_vault(Keyring, "vault", vault_filename_from=existing_vault, vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(Keyring, "from-vault", vault_filename_from=existing_vault, vault_filename_to=vault_file_new)
 
         @vault.vaulter(varvault.VaultFlags.permit_modifications(), input_keys=Keyring.key_valid_type_is_str, return_keys=Keyring.key_valid_type_is_str)
         def mod(**kwargs):
@@ -218,7 +217,7 @@ class TestVault:
 
         assert vault.get(Keyring.key_valid_type_is_str) == "new-modified-value", f"Value for {Keyring.key_valid_type_is_str} is not what it should be"
 
-        new_vault = varvault.from_vault(Keyring, "vault", vault_file_new, varvault.VaultFlags.permit_modifications())
+        new_vault = varvault.from_vault(Keyring, "from-vault", vault_file_new, varvault.VaultFlags.permit_modifications())
 
         @new_vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
         def _set():
@@ -228,7 +227,7 @@ class TestVault:
         assert new_vault.get(Keyring.key_valid_type_is_str) == "new-modified-value-gen-2", f"Value for {Keyring.key_valid_type_is_str} is not what it should be"
 
     def test_create_readonly_vault(self):
-        vault = varvault.from_vault(Keyring, "vault", vault_filename_from=existing_vault, file_is_read_only=True)
+        vault = varvault.from_vault(Keyring, "from-vault", vault_filename_from=existing_vault, file_is_read_only=True)
         try:
             vault.insert(Keyring.key_valid_type_is_int, 1)
             pytest.fail("Insert: Somehow managed to insert a value into a vault that is supposed to be read-only")
@@ -257,21 +256,21 @@ class TestVault:
     def test_create_from_faulty_vault(self):
         this_key_doesnt_exist_in_keyring = varvault.Key("this_key_doesnt_exist_in_keyring", valid_type=str)
         try:
-            vault = varvault.from_vault(Keyring, "vault", vault_filename_from=faulty_existing_vault)
+            vault = varvault.from_vault(Keyring, "from-vault", vault_filename_from=faulty_existing_vault)
             pytest.fail("Managed to create a vault from a file that should be faulty")
         except Exception as e:
             logger.info(f"Expected error received; test passed: {e}")
 
         try:
-            vault = varvault.from_vault(Keyring, "vault", vault_filename_from=faulty_vault_key_missmatch)
+            vault = varvault.from_vault(Keyring, "from-vault", vault_filename_from=faulty_vault_key_missmatch)
             pytest.fail("Managed to create a vault from a file with a key not in keyring, and ignore_keys_not_in_keyring is False")
         except Exception as e:
             logger.info(f"Expected error received; test passed: {e}")
 
-        vault = varvault.from_vault(Keyring, "vault", vault_filename_from=faulty_vault_key_missmatch, vault_filename_to=vault_file_new, ignore_keys_not_in_keyring=True)
+        vault = varvault.from_vault(Keyring, "from-vault", vault_filename_from=faulty_vault_key_missmatch, vault_filename_to=vault_file_new, ignore_keys_not_in_keyring=True)
         assert this_key_doesnt_exist_in_keyring not in vault, f"Key {this_key_doesnt_exist_in_keyring} was found in the vault when it shouldn't be"
 
-        vault = varvault.from_vault(Keyring, "vault",
+        vault = varvault.from_vault(Keyring, "from-vault",
                                     vault_filename_from=faulty_vault_key_missmatch,
                                     vault_filename_to=vault_file_new,
                                     this_key_doesnt_exist_in_keyring=this_key_doesnt_exist_in_keyring)
@@ -445,7 +444,7 @@ class TestVault:
         _set()
 
         assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. There should be 12 at least."
-        vault_from = varvault.from_vault(Keyring, "vault", vault_filename_from=vault_file_new, remove_existing_log_file=True)
+        vault_from = varvault.from_vault(Keyring, "from-vault", vault_filename_from=vault_file_new, remove_existing_log_file=True)
         assert Keyring.key_valid_type_is_str in vault_from
         assert len(open(vault_log_file).readlines()) >= 2, f"There appears to be more lines in the log file than what there should be. There should be 2 at most. It seems the log file wasn't removed when the new vault was created from the existing file."
 

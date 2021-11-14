@@ -14,9 +14,10 @@ clean:
 .PHONY: build
 build: clean
 	@python3 -m build
+	@tar tzf dist/varvault-*.tar.gz
 
 .PHONY: upload
-upload:
+upload: dependencies build
 	@python3 -m twine upload --repository $(PYTHON_REPOSITORY) dist/*
 
 .PHONY: update-pip
@@ -25,4 +26,4 @@ update-pip:
 
 .PHONY: test-vault
 test-vault:
-	pytest --tb=short --junitxml ./logs/test-vault-report.xml -vvv --full-trace -p no:cacheprovider --html=./logs/test-vault-report.html --self-contained-html test/test_vault.py test/test_large_scale_vault.py
+	pytest --tb=short --junitxml ./logs/test-vault-report.xml -vvv --full-trace -p no:cacheprovider --html=./logs/test-vault-report.html --self-contained-html tests/test_vault.py tests/test_large_scale_vault.py

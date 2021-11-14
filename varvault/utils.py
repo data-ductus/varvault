@@ -1,6 +1,6 @@
 import asyncio
 import logging
-
+from types import *
 from typing import *
 
 from .keyring import Keyring, Key
@@ -67,7 +67,7 @@ def concurrently(*args_as_iterable: Union[Sized, Iterable], **input_kwargs):
     import functools
     import asyncio
 
-    def wrap_outer(func: Callable):
+    def wrap_outer(func: Union[Coroutine, FunctionType, Callable]):
         assert asyncio.iscoroutinefunction(func), f"Function {func.__module__}.{func.__name__} is not defined as a coroutine; define it as 'async def {func.__name__}(...)'"
 
         @functools.wraps(func)
@@ -80,7 +80,7 @@ def concurrently(*args_as_iterable: Union[Sized, Iterable], **input_kwargs):
     return wrap_outer
 
 
-def concurrent_execution(target: Callable, *inputs, **kwargs):
+def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inputs, **kwargs):
     """
     Wraps the asyncio API in Python to make it a bit easier to work with.
 
@@ -148,13 +148,3 @@ def create_return_vault_from_file(filename_from: str, keyring: Type[Keyring], li
     concurrent_execution(build, vault_file_data.keys())
 
     return MiniVault(**return_vault_data)
-
-
-def try_run_func_and_log_error(func: Callable, logger: logging.Logger, *args):
-    assert callable(func), "func is not callable; please fix"
-    assert isinstance(logger, logging.Logger), f"logger is not the correct instance (type: {type(logger)}); please fix"
-    try:
-        return func(*args)
-    except Exception as e:
-        logger.error(e)
-        raise

@@ -56,6 +56,7 @@ class VarVault(object):
 
     def __init__(self, keyring: Type[Keyring], name: str,
                  *flags: VaultFlags,
+                 use_logger: bool = True,
                  vault_filename_from: str = None,
                  vault_filename_to: str = None,
                  file_is_read_only: bool = False,
@@ -63,7 +64,7 @@ class VarVault(object):
                  **extra_keys):
         assert issubclass(keyring, Keyring), f"'keyring' must be a subclass of {Keyring}"
         self.keyring_class = keyring
-        self.logger = get_logger(name, remove_existing_log_file)
+        self.logger = get_logger(name, remove_existing_log_file) if use_logger else None 
         self.flags: list = list(flags)
         self.lock = Lock()
         assert not VaultFlags.flag_is_set(VaultFlags.clean_return_var_keys(), *self.flags), f"You really should not set {VaultFlags.clean_return_var_keys()} " \
@@ -93,9 +94,9 @@ class VarVault(object):
         self.inner_vault = self.Vault(self.vault_file)
 
         if self.vault_file:
-            self.logger.info(f"Vault writing data to '{self.vault_file.name}'")
+            self.log(f"Vault writing data to '{self.vault_file.name}'", level=logging.INFO)
         if self.live_update:
-            self.logger.info(f"Vault doing live updates from '{self.vault_filename_from}' whenever the vault is accessed.")
+            self.log(f"Vault doing live updates from '{self.vault_filename_from}' whenever the vault is accessed.", level=logging.INFO)
 
     def __eq__(self, other):
         pass
@@ -104,7 +105,7 @@ class VarVault(object):
         self._assert_key_is_correct_type(key, msg=f"{self.__contains__.__name__} may only be used with a {Key}-object, not {type(key)}")
 
         if key.key_name not in self.keys:
-            self.logger.warning(f"Key {key} does not exist in the keyring. Trying to check if the vault contains this key will never succeed; Consider removing the call that triggered this warning.")
+            self.log(f"Key {key} does not exist in the keyring. Trying to check if the vault contains this key will never succeed; Consider removing the call that triggered this warning.", level=logging.WARNING)
             return False
 
         return key in self.vault
@@ -116,6 +117,11 @@ class VarVault(object):
 
     def __copy__(self):
         pass
+    
+    def log(self, msg: object, *args, level=logging.DEBUG, exception: BaseException = None):
+        assert isinstance(level, int), "Log level must be defined as an integer"
+        if self.logger:
+            self.logger.log(level, msg, *args, exc_info=exception)
 
     @property
     def vault(self):
@@ -178,24 +184,24 @@ class VarVault(object):
                 self._configure_log_levels_based_on_flags(*all_flags)
                 assert callable(func)
 
-                self.logger.debug(f"======{'=' * len(func_module_name)}=")
-                self.logger.debug(f">>>>> {func_module_name}:")
+                self.log(f"======{'=' * len(func_module_name)}=")
+                self.log(f">>>>> {func_module_name}:")
                 if input_kwargs:
-                    self.logger.debug(f"-------------")
-                    self.logger.debug(f"Input kwargs:")
+                    self.log(f"-------------")
+                    self.log(f"Input kwargs:")
                     for kwarg_key, kwarg_value in input_kwargs.items():
-                        self.logger.debug(f"{kwarg_key}: ({type(kwarg_value)}) -- {kwarg_value}")
-                    self.logger.debug(f"-------------")
+                        self.log(f"{kwarg_key}: ({type(kwarg_value)}) -- {kwarg_value}")
+                    self.log(f"-------------")
 
                 input_kwargs.update(kwargs)
 
-                self.logger.debug(f"======= Calling {func.__module__}.{func.__name__} ========")
+                self.log(f"======= Calling {func.__module__}.{func.__name__} ========")
                 return input_kwargs
 
             def post_call(ret):
                 self._vaulter__handle_return_vars(ret, return_keys, *flags)
-                self.logger.debug(f"<<<<< {func.__module__}.{func.__name__}:")
-                self.logger.debug(f"======{'=' * len(func.__module__ + '.' + func.__name__)}=\n")
+                self.log(f"<<<<< {func.__module__}.{func.__name__}:")
+                self.log(f"======{'=' * len(func.__module__ + '.' + func.__name__)}=\n")
                 self._reset_log_levels()
 
             # Separate handling if the decorated function uses the coroutine API
@@ -209,8 +215,8 @@ class VarVault(object):
                     try:
                         ret = await func(*args, **input_kwargs)
                     except Exception as e:
-                        self.logger.error(f"Failed to run {func.__module__}.{func.__name__}: {e}")
-                        self.logger.error(str(traceback.format_exc()).rstrip("\n"))
+                        self.log(f"Failed to run {func.__module__}.{func.__name__}: {e}", level=logging.ERROR)
+                        self.log(str(traceback.format_exc()).rstrip("\n"), level=logging.ERROR)
                         raise
 
                     #
@@ -230,8 +236,8 @@ class VarVault(object):
                     try:
                         ret = func(*args, **input_kwargs)
                     except Exception as e:
-                        self.logger.error(f"Failed to run {func.__module__}.{func.__name__}: {e}")
-                        self.logger.error(str(traceback.format_exc()).rstrip("\n"))
+                        self.log(f"Failed to run {func.__module__}.{func.__name__}: {e}", level=logging.ERROR)
+                        self.log(str(traceback.format_exc()).rstrip("\n"), level=logging.ERROR)
                         raise
 
                     #
@@ -304,18 +310,18 @@ class VarVault(object):
             self._insert_returnvault(mini, *flags)
 
     def _clean_return_var_keys(self, return_keys: Union[List[Key], Tuple[Key]]):
-        self.logger.debug(f"Cleaning return var keys: {return_keys}")
+        self.log(f"Cleaning return var keys: {return_keys}")
         for key in return_keys:
             if not key.valid_type:
                 temp = None
-                self.logger.debug(f"Cleaning key {key} by setting it to None (no valid_type defined for {key})")
+                self.log(f"Cleaning key {key} by setting it to None (no valid_type defined for {key})")
             else:
                 try:
                     temp = key.valid_type()
-                    self.logger.debug(f"Cleaning key {key} by setting it to '{temp}' (key.valid_type = {key.valid_type})")
+                    self.log(f"Cleaning key {key} by setting it to '{temp}' (key.valid_type = {key.valid_type})")
                 except:
                     temp = None
-                    self.logger.debug(f"Cleaning key {key} by setting it to '{None}' (valid_type is defined, but no default constructor appears to exist for {key.valid_type})")
+                    self.log(f"Cleaning key {key} by setting it to '{None}' (valid_type is defined, but no default constructor appears to exist for {key.valid_type})")
             self.vault.put(key, temp)
 
     def _to_minivault(self, return_keys, ret, *flags) -> MiniVault:
@@ -375,12 +381,12 @@ class VarVault(object):
                 keys_already_in_vault = [k for k in mini.keys() if k in self]
                 assert len(keys_already_in_vault) == 0, f"Keys {keys_already_in_vault} are already in the vault and {VaultFlags.permit_modifications()} is not set. " \
                                                         f"By default, modifications to existing keys are not permitted."
-            self.logger.debug("-------------------")
-            self.logger.debug("Variables going in:")
+            self.log("-------------------")
+            self.log("Variables going in:")
             for ret_key, ret_value in mini.items():
-                self.logger.debug(f"{ret_key}: ({type(ret_value)}) -- {ret_value}")
+                self.log(f"{ret_key}: ({type(ret_value)}) -- {ret_value}")
             self.vault.put(mini)
-            self.logger.debug("-----------------")
+            self.log("-----------------")
 
     def _insert__assert_key_in_keyring(self, key: Key, skip=False):
         """Assert that the key is in the keyring. This step is skipped if force==True"""
@@ -447,7 +453,7 @@ class VarVault(object):
                 assert key in self, f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. " \
                                     f"You can set the flag '{VaultFlags.input_var_can_be_missing()}' to avoid this, in which case the value will be {None}, or make sure a value is mapped to it."
 
-            self.logger.debug(f"Getting value for key {key} from vault")
+            self.log(f"Getting value for key {key} from vault")
             value = self.vault.get(key, default)
 
             self._reset_log_levels()
