@@ -61,10 +61,14 @@ class VarVault(object):
                  vault_filename_to: str = None,
                  file_is_read_only: bool = False,
                  remove_existing_log_file: bool = False,
+                 specific_logger: logging.Logger = None,
                  **extra_keys):
         assert issubclass(keyring, Keyring), f"'keyring' must be a subclass of {Keyring}"
         self.keyring_class = keyring
-        self.logger = get_logger(name, remove_existing_log_file) if use_logger else None 
+        if specific_logger:
+            self.logger = specific_logger
+        else:
+            self.logger = get_logger(name, remove_existing_log_file) if use_logger else None
         self.flags: list = list(flags)
         self.lock = Lock()
         assert not VaultFlags.flag_is_set(VaultFlags.clean_return_var_keys(), *self.flags), f"You really should not set {VaultFlags.clean_return_var_keys()} " \
@@ -510,6 +514,9 @@ class VarVault(object):
         return all_flags
 
     def _configure_log_levels_based_on_flags(self, *all_flags):
+        if not self.logger:
+            # No logger has been assigned for this vault. Just return then.
+            return
         if VaultFlags.flag_is_set(VaultFlags.silent(), *all_flags) and VaultFlags.flag_is_set(VaultFlags.debug(), *all_flags):
             # Don't modify any logging levels; debug and silent cancel each other out
             pass
@@ -519,4 +526,7 @@ class VarVault(object):
             configure_logger(self.logger, stream_level=logging.DEBUG)
 
     def _reset_log_levels(self):
+        if not self.logger:
+            # No logger has been assigned for this vault. Just return then.
+            return
         configure_logger(self.logger, overall_level=logging.DEBUG, stream_level=logging.INFO, file_level=logging.DEBUG)

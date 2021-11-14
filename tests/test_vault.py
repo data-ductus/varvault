@@ -383,71 +383,6 @@ class TestVault:
             assert v == "valid", f"Value {v} is not correct; Live-update doesn't work"
         _get()
 
-    def test_silent(self):
-        temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
-        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.silent(), vault_filename_to=vault_file_new)
-        vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
-
-        @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
-        def _set():
-            return "valid"
-        _set()
-        assert len(open(temp_log_file).readlines()) <= 2, f"There appears to be more lines in the log file than what there should be. " \
-                                                          f"There should only be 2 at most. {varvault.VaultFlags.silent()} appears to not function correctly"
-        assert len(open(vault_log_file).readlines()) <= 2, f"There appears to be more lines in the log file than what there should be. " \
-                                                           f"There should only be 2 at most. {varvault.VaultFlags.silent()} appears to not function correctly"
-
-    def test_debug(self):
-        temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
-        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), vault_filename_to=vault_file_new)
-        # Create and set a file to act as a StreamHandler for the logger object in varvault.
-        # This way, we can easily capture stdout to a file and assert that the output is the expected
-        vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
-
-        @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
-        def _set():
-            return "valid"
-        _set()
-
-        assert len(open(temp_log_file).readlines()) >= 10, f"There appears to be fewer lines in the log file than what there should be. " \
-                                                           f"There should only be 12 at least. {varvault.VaultFlags.debug()} appears to not function correctly"
-        assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. " \
-                                                            f"There should only be 12 at least. {varvault.VaultFlags.debug()} appears to not function correctly"
-
-    def test_silent_and_debug(self):
-        temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
-        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), vault_filename_to=vault_file_new)
-        # Create and set a file to act as a StreamHandler for the logger object in varvault.
-        # This way, we can easily capture stdout to a file and assert that the output is the expected
-        vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
-
-        @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
-        def _set():
-            return "valid"
-        _set()
-
-        assert len(open(temp_log_file).readlines()) == 0, f"There appears to be more lines in the log file than what there should be. " \
-                                                          f"There should be 0 at most. {varvault.VaultFlags.debug()} with {varvault.VaultFlags.silent()} appears to not function correctly"
-        assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. " \
-                                                            f"There should be 12 at most. {varvault.VaultFlags.debug()} with {varvault.VaultFlags.silent()} appears to not function correctly"
-
-    def test_remove_existing_log_file(self):
-        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), vault_filename_to=vault_file_new)
-
-        @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
-        def _set():
-            return "valid"
-        _set()
-
-        assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. There should be 12 at least."
-        vault_from = varvault.from_vault(Keyring, "from-vault", vault_filename_from=vault_file_new, remove_existing_log_file=True)
-        assert Keyring.key_valid_type_is_str in vault_from
-        assert len(open(vault_log_file).readlines()) >= 2, f"There appears to be more lines in the log file than what there should be. There should be 2 at most. It seems the log file wasn't removed when the new vault was created from the existing file."
-
     def test_clean_return_keys(self):
         vault_new = varvault.create_vault(Keyring, "vault", vault_filename_to=vault_file_new)
 
@@ -528,3 +463,124 @@ class TestVault:
 
         assert vault.get(Keyring.key_valid_type_is_str) == "valid"
         assert vault_secondary.get(Keyring.key_valid_type_is_int) == 1
+
+
+class TestLogging:
+    @classmethod
+    def setup_class(cls):
+        tempfile.tempdir = "/tmp" if sys.platform == "darwin" or sys.platform == "linux" else tempfile.gettempdir()
+
+    def test_silent(self):
+        temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
+        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.silent(), vault_filename_to=vault_file_new)
+        vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
+
+        @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        def _set():
+            return "valid"
+        _set()
+        assert len(open(temp_log_file).readlines()) <= 2, f"There appears to be more lines in the log file than what there should be. " \
+                                                          f"There should only be 2 at most. {varvault.VaultFlags.silent()} appears to not function correctly"
+        assert len(open(vault_log_file).readlines()) <= 2, f"There appears to be more lines in the log file than what there should be. " \
+                                                           f"There should only be 2 at most. {varvault.VaultFlags.silent()} appears to not function correctly"
+
+    def test_debug(self):
+        temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
+        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), vault_filename_to=vault_file_new)
+        # Create and set a file to act as a StreamHandler for the logger object in varvault.
+        # This way, we can easily capture stdout to a file and assert that the output is the expected
+        vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
+
+        @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        def _set():
+            return "valid"
+        _set()
+
+        assert len(open(temp_log_file).readlines()) >= 10, f"There appears to be fewer lines in the log file than what there should be. " \
+                                                           f"There should only be 12 at least. {varvault.VaultFlags.debug()} appears to not function correctly"
+        assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. " \
+                                                            f"There should only be 12 at least. {varvault.VaultFlags.debug()} appears to not function correctly"
+
+    def test_silent_and_debug(self):
+        temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
+        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), vault_filename_to=vault_file_new)
+        # Create and set a file to act as a StreamHandler for the logger object in varvault.
+        # This way, we can easily capture stdout to a file and assert that the output is the expected
+        vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
+
+        @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
+        def _set():
+            return "valid"
+        _set()
+
+        assert len(open(temp_log_file).readlines()) == 0, f"There appears to be more lines in the log file than what there should be. " \
+                                                          f"There should be 0 at most. {varvault.VaultFlags.debug()} with {varvault.VaultFlags.silent()} appears to not function correctly"
+        assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. " \
+                                                            f"There should be 12 at most. {varvault.VaultFlags.debug()} with {varvault.VaultFlags.silent()} appears to not function correctly"
+
+    def test_no_logger(self):
+        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
+        try:
+            os.unlink(vault_log_file)
+        except OSError:
+            pass
+        assert not os.path.exists(vault_log_file), f"{vault_log_file} still exists, weird"
+
+        vault_new = varvault.create_vault(Keyring, "vault", use_logger=False, vault_filename_to=vault_file_new)
+        assert vault_new.logger is None, "logger object is not None; it should be"
+        assert not os.path.exists(vault_log_file), f"{vault_log_file} exists after creating the vault when saying there shouldn't be a logger object"
+
+        @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
+        def _set():
+            return "valid"
+        _set()
+        assert not os.path.exists(vault_log_file), f"{vault_log_file} exists after using the vault. How?!"
+
+    def test_remove_existing_log_file(self):
+        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), vault_filename_to=vault_file_new)
+
+        @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
+        def _set():
+            return "valid"
+        _set()
+
+        assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. There should be 12 at least."
+        vault_from = varvault.from_vault(Keyring, "from-vault", vault_filename_from=vault_file_new, remove_existing_log_file=True)
+        assert Keyring.key_valid_type_is_str in vault_from
+        assert len(open(vault_log_file).readlines()) >= 2, f"There appears to be more lines in the log file than what there should be. There should be 2 at most. It seems the log file wasn't removed when the new vault was created from the existing file."
+
+    def test_specific_logger(self):
+        old_handlers = logger.handlers.copy()
+        temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "pytest-stream.log")
+        vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "pytest-file.log")
+        try:
+            os.unlink(temp_log_file)
+        except OSError:
+            pass
+        try:
+            os.unlink(vault_log_file)
+        except OSError:
+            pass
+
+        try:
+            logger.handlers.clear()
+            logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
+            logger.addHandler(logging.FileHandler(filename=vault_log_file))
+
+            vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), vault_filename_to=vault_file_new, specific_logger=logger)
+            assert vault_new.logger.name == "pytest"  # The logger used for pytest here is called pytest
+
+            @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
+            def _set():
+                return "valid"
+            _set()
+
+            assert len(open(temp_log_file).readlines()) == 1, f"There appears to be more lines in the log file than what there should be. There should be 1 at most."
+            assert len(open(vault_log_file).readlines()) == 11, f"There appears to be fewer lines in the log file than what there should be. There should be 11 at most."
+        finally:
+            logger.handlers.clear()
+            logger.handlers = old_handlers
