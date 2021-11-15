@@ -89,8 +89,9 @@ def from_vault(keyring: Type[Keyring],
         keys_in_keyring.update(extra_keys)
         keys_in_file = vault_file_data.keys()
         _keys_not_in_keyring = [k for k in keys_in_file if k not in keys_in_keyring]
-        assert len(_keys_not_in_keyring) == 0 or ignore_keys_not_in_keyring, f"Keys found that are not in the keyring, and you have not set to ignore keys " \
-                                                                             f"found that are not in the keyring. Keys not in keyring: {_keys_not_in_keyring}"
+        assert len(_keys_not_in_keyring) == 0 or ignore_keys_not_in_keyring, f"Keys found in vault-file '{vault_filename_from}' that are not in the keyring, " \
+                                                                             f"and you have not set to ignore keys found that are not in the keyring. " \
+                                                                             f"Keys not in keyring: {_keys_not_in_keyring}"
         return _keys_not_in_keyring
     keys_not_in_keyring = _check_for_keys_not_in_keyring()
 
