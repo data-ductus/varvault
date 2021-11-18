@@ -1,5 +1,3 @@
-PYTHON_REPOSITORY = testpypi
-
 .PHONY: dependencies
 dependencies:
 	@echo "Installing dependencies for building and uploading a package to PyPi"
@@ -18,7 +16,7 @@ build: clean
 
 .PHONY: upload
 upload: dependencies build
-	@python3 -m twine upload --repository $(PYTHON_REPOSITORY) dist/*
+	@python3 -m twine upload dist/*
 
 .PHONY: update-pip
 update-pip:
