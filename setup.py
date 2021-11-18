@@ -25,7 +25,7 @@ setup(
     author_email="calle.holst@dataductus.se",
     license="Apache 2.0",
     classifiers=[
-        "License :: OSI Approved :: Apache 2.0 License",
+        "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8"
     ],
