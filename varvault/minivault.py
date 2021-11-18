@@ -14,6 +14,8 @@ class MiniVault(dict):
 
     @staticmethod
     def build(keys: List[Key] or Tuple[Key], values: List[Any] or Tuple[Any]):
+        """Builds a minivault object based on iterables of keys and values. Note that if more values are passed to the function than keys,
+        the indices for the values that exceed the length of the keys will be ignored."""
         assert isinstance(keys, (list, tuple)), "'keys' must be a list or a tuple"
         assert isinstance(values, (list, tuple)), "'values' must be a list or a tuple"
 

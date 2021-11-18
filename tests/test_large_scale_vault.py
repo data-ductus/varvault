@@ -49,16 +49,22 @@ class ResultDict(ResultToUploadDict):
 
 
 class GroupInstallers(varvault.VaultStructDictBase):
-    class Group(dict):
+    class Group(varvault.VaultStructDictBase):
         def __init__(self, installer, installer_upgrade=None):
-            super(GroupInstallers.Group, self).__init__({"installer-upgrade": installer_upgrade}, installer=installer)
+            super(GroupInstallers.Group, self).__init__(installer=installer, installer_upgrade=installer_upgrade)
             self.installer = installer
             self.installer_upgrade = installer_upgrade
+
+        @classmethod
+        def build_from_vault_key(cls, vault_key, vault_value):
+            return GroupInstallers.Group(**vault_value)
 
     def __init__(self, **vault_pairs):
         super(GroupInstallers, self).__init__(**vault_pairs)
         for group, group_data in vault_pairs.items():
-            self.update({group: self.Group(group_data.get("installer"), group_data.get("installer-upgrade"))})
+            self.__setattr__(group, self.Group.build_from_vault_key(vault_key=group,
+                                                                    vault_value=dict(installer=group_data.get("installer"),
+                                                                                     installer_upgrade=group_data.get("installer-upgrade"))))
 
     @classmethod
     def build_from_vault_key(cls, vault_key, vault_value):
@@ -123,7 +129,7 @@ class KeyringLargeScale(varvault.Keyring):
 class TestLargeScaleVault:
 
     def test_load_from_large_vault(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, vault_filename_to=vault_file_new, remove_existing_log_file=True)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.remove_existing_log_file(), varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
         logger.info("Created the vault from file")
         # We load from existing and write to new, so just check that the new file contains the correct data
         contents = json.load(open(vault_file_new))
@@ -175,7 +181,7 @@ class TestLargeScaleVault:
         assert KeyringLargeScale.result in contents
 
     def test_get_multiple(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, vault_filename_to=vault_file_new, remove_existing_log_file=True)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.start_time,
@@ -194,7 +200,7 @@ class TestLargeScaleVault:
         assert len([key for key in keys if key not in vars]) == 0, f"Keys are missing in vars: {[key for key in keys if key not in vars]}"
 
     def test_get_via_vaulter(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, vault_filename_to=vault_file_new, remove_existing_log_file=True)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.cpus_per_container,
@@ -251,7 +257,7 @@ class TestLargeScaleVault:
     def test_get_threaded(self):
         # Note the use of varvault.VaultFlags.silent() here. It will speed up the processing significantly.
         # It brings processing down from 1.6 seconds to 0.16 seconds for 500 parallel requests.
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.silent(), vault_filename_to=vault_file_new, remove_existing_log_file=True)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.silent(), varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.cpus_per_container,
@@ -319,7 +325,7 @@ class TestLargeScaleVault:
             # It's fine, file probably doesn't exist
             pass
 
-        vault = varvault.from_vault(KeyringLargeScale, "vault", vault_file_new, varvault.VaultFlags.live_update(), remove_existing_log_file=True)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", vault_file_new, varvault.VaultFlags.live_update(), varvault.VaultFlags.remove_existing_log_file())
 
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,

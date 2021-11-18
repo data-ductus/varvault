@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import os
 import _io
+import abc
 import json
+import asyncio
 import logging
 import functools
 import traceback
@@ -13,12 +14,92 @@ from threading import Lock
 
 from .minivault import MiniVault
 from .keyring import Keyring, Key
-from .utils import concurrent_execution, md5hash, create_return_vault_from_file, is_serializable
+from .utils import concurrent_execution, md5hash, create_mini_vault_from_file, is_serializable
 from .vaultflags import VaultFlags
 from .logger import get_logger, configure_logger
 
 
-class VarVault(object):
+class VarVaultInterface(abc.ABC):
+    # =========================================================================================================================================
+    # vaulter
+    # =========================================================================================================================================
+    @abc.abstractmethod
+    def vaulter(self, *flags: VaultFlags, input_keys: Union[Key, list, tuple] = None, return_keys: Union[Key, list, tuple] = None) -> Callable:
+        f"""
+        Decorator to define a function as a vaulted function.
+        A vaulted function works a lot different to a normal function.
+        A vault works like a key-value storage. A vaulted function will get its arguments
+        by accessing them from the vault, and then store any returned value back in the vault.
+
+        :param input_keys: Can be of type: {Key}, {list}, {tuple}. Default: {None}. Keys must be defined in the
+         keyring for this specific vault.
+        :param return_keys: Can be of type: {str}, {list}, {tuple}. Default: {None}. Keys must be defined in the
+         keyring for this specific vault.
+        :param flags: Optional argument for defining some flags for this vaulted function. Flags that have an effect:
+         {VaultFlags.debug},
+         {VaultFlags.silent},
+         {VaultFlags.input_var_can_be_missing},
+         {VaultFlags.permit_modifications},
+         {VaultFlags.split_return_keys},
+         {VaultFlags.clean_return_var_keys}
+        """
+        pass
+
+    # ============================================================
+    # insert
+    # ============================================================
+    @abc.abstractmethod
+    def insert(self, key: Key, value: object, *flags: VaultFlags):
+        f"""
+        Inserts a {value} into the vault mapped to {key}.
+        
+        :param key: The {key} to insert the value to. Type must be {Key} 
+        :param value: The object to assign to {key}
+        :param flags: An optional set of flags to tweak the behavior of the insert. Flags that have an effect: 
+         {VaultFlags.permit_modifications},
+         {VaultFlags.return_values_cannot_be_none}, 
+         {VaultFlags.debug},
+         {VaultFlags.silent}
+        """
+        pass
+
+    # =======================================================================
+    # get_multiple
+    # =======================================================================
+    @abc.abstractmethod
+    def get_multiple(self, keys: List[Key], *flags: VaultFlags) -> MiniVault:
+        f"""
+        Get multiple objects from the vault that are mapped to keys in {keys}. 
+        
+        :param keys: A list of keys to get the objects for. Must be a list of {Key} objects
+        :param flags: An optional set of flags to tweak the behavior of the get. Flags that have an effect:
+         {VaultFlags.debug},
+         {VaultFlags.silent},
+         {VaultFlags.input_var_can_be_missing}
+        :return: A {MiniVault} with all the objects in the vault mapped to the keys, or {None} if it's not in the vault.  
+        """
+        pass
+
+    # ========================================================
+    # get
+    # ========================================================
+    @abc.abstractmethod
+    def get(self, key: Key, *flags: VaultFlags, default=None):
+        f"""
+        Get an object from the vault that is mapped to {key}. 
+        
+        :param key: The key to get an object for. Must be of type {Key}
+        :param flags: An optional set of flags to tweak the behavior of the get. Flags that have an effect:
+         {VaultFlags.debug},
+         {VaultFlags.silent},
+         {VaultFlags.input_var_can_be_missing}
+        :param default: An optional argument to define which value to return as default is the value doesn't exist in the vault. Default is {None}
+        :return: The object in the vault mapped to the {key}, or {None} if it's not in the vault.  
+        """
+        pass
+
+
+class VarVault(VarVaultInterface):
     class Vault(dict):
         def __init__(self, vault_file: TextIO = None):
             super(VarVault.Vault, self).__init__()
@@ -54,22 +135,37 @@ class VarVault(object):
             if self.vault_file:
                 json.dump(self.writable_args, open(self.vault_file.name, "w"), indent=2)
 
-    def __init__(self, keyring: Type[Keyring], name: str,
+    def __init__(self, varvault_keyring: Type[Keyring], varvault_vault_name: str,
                  *flags: VaultFlags,
-                 use_logger: bool = True,
-                 vault_filename_from: str = None,
-                 vault_filename_to: str = None,
-                 file_is_read_only: bool = False,
-                 remove_existing_log_file: bool = False,
-                 specific_logger: logging.Logger = None,
+                 varvault_vault_filename_from: str = None,
+                 varvault_vault_filename_to: str = None,
+                 varvault_specific_logger: logging.Logger = None,
                  **extra_keys):
-        assert issubclass(keyring, Keyring), f"'keyring' must be a subclass of {Keyring}"
-        self.keyring_class = keyring
-        if specific_logger:
-            self.logger = specific_logger
-        else:
-            self.logger = get_logger(name, remove_existing_log_file) if use_logger else None
+        f"""
+        Creates a vault-object. You should ideally create a vault from the existing factory functions. 
+        
+        :param varvault_keyring: The {Keyring} class used for this vault.  
+        :param varvault_vault_name: The name of the vault. This is used when creating a logfile for logging information to. 
+        :param flags: A set of flags used to tweak the behavior of the vault object. See {VaultFlags} for what flags can be used and what they do.   
+        :param varvault_vault_filename_from: Optional. The name of the file to load a vault from.  
+        :param varvault_vault_filename_to: Optional. The name of a JSON file to write data in the vault to.  
+        :param varvault_specific_logger: Optional. A specific logger to log to in-case you do not want to use the built-in logger in varvault.  
+        :param extra_keys: Optional. A kwargs-object with extra keys that are not defined in the {varvault_keyring}. This can be useful when you have a lot of keys that you might 
+         want to handle in a programmatic sense rather than in a pre-defined sense. 
+        """
+        assert issubclass(varvault_keyring, Keyring), f"'keyring' must be a subclass of {Keyring}"
+        self.keyring_class = varvault_keyring
         self.flags: list = list(flags)
+        disable_logger = VaultFlags.flag_is_set(VaultFlags.disable_logger(), *self.flags)
+        remove_existing_log_file = VaultFlags.flag_is_set(VaultFlags.remove_existing_log_file(), *self.flags)
+        self.file_is_read_only = VaultFlags.flag_is_set(VaultFlags.file_is_read_only(), *self.flags)
+        self.live_update = VaultFlags.flag_is_set(VaultFlags.live_update(), *self.flags)
+
+        if varvault_specific_logger:
+            self.logger = varvault_specific_logger
+        else:
+            self.logger = get_logger(varvault_vault_name, remove_existing_log_file) if not disable_logger else None
+
         self.lock = Lock()
         assert not VaultFlags.flag_is_set(VaultFlags.clean_return_var_keys(), *self.flags), f"You really should not set {VaultFlags.clean_return_var_keys()} " \
                                                                                             f"to the vault itself as that would be an extremely bad idea."
@@ -81,16 +177,13 @@ class VarVault(object):
         self.keys.update(extra_keys)
 
         # Expand vault-files passed to constructor to expand both env vars and user in case they have been defined that way
-        vault_filename_from = os.path.expanduser(os.path.expandvars(vault_filename_from)) if vault_filename_from else None
-        vault_filename_to = os.path.expanduser(os.path.expandvars(vault_filename_to)) if vault_filename_to else None
-        self.vault_filename_from = vault_filename_from
-        self.vault_filename_to = vault_filename_to
-
-        self.file_is_read_only = file_is_read_only
+        varvault_vault_filename_from = os.path.expanduser(os.path.expandvars(varvault_vault_filename_from)) if varvault_vault_filename_from else None
+        varvault_vault_filename_to = os.path.expanduser(os.path.expandvars(varvault_vault_filename_to)) if varvault_vault_filename_to else None
+        self.vault_filename_from = varvault_vault_filename_from
+        self.vault_filename_to = varvault_vault_filename_to
 
         # Create the vault file object
         self.vault_file = self._create_vault_file() if self.vault_filename_to and not self.file_is_read_only else None
-        self.live_update = VaultFlags.flag_is_set(VaultFlags.live_update(), *self.flags)
 
         self.vault_file_from_hash = self._get_vault_file_hash()
 
@@ -101,9 +194,6 @@ class VarVault(object):
             self.log(f"Vault writing data to '{self.vault_file.name}'", level=logging.INFO)
         if self.live_update:
             self.log(f"Vault doing live updates from '{self.vault_filename_from}' whenever the vault is accessed.", level=logging.INFO)
-
-    def __eq__(self, other):
-        pass
 
     def __contains__(self, key: Key):
         self._assert_key_is_correct_type(key, msg=f"{self.__contains__.__name__} may only be used with a {Key}-object, not {type(key)}")
@@ -119,8 +209,8 @@ class VarVault(object):
         if self.vault_file and isinstance(self.vault_file, _io.TextIOWrapper):
             self.vault_file.close()
 
-    def __copy__(self):
-        pass
+    def __str__(self):
+        return self.inner_vault.__str__()
     
     def log(self, msg: object, *args, level=logging.DEBUG, exception: BaseException = None):
         assert isinstance(level, int), "Log level must be defined as an integer"
@@ -145,26 +235,14 @@ class VarVault(object):
         file.close()
         return file
 
-    def vaulter(self,
-                *flags: VaultFlags,
-                input_keys: Union[Key, list, tuple] = None,
-                return_keys: Union[Key, list, tuple] = None,
-                ) -> Callable:
-        """
-        Decorator to define a function as a vaulted function.
-        A vaulted function works a lot different to a normal function.
-        A vault works like a key-value storage. A vaulted function will get its arguments
-        by accessing them from the vault, and then store any return value back in the vault.
+    # =========================================================================================================================================
+    # vaulter
+    # =========================================================================================================================================
+    def vaulter(self, *flags: VaultFlags, input_keys: Union[Key, list, tuple] = None, return_keys: Union[Key, list, tuple] = None) -> Callable:
+        #
+        # See abstract method in abstract class for an in-depth docstring.
+        #
 
-        :param input_keys: Can be of type: Key, list, tuple. Default: None. Keys must be defined in the
-         keyring for this specific vault.
-        :param return_keys: Can be of type: str, list, tuple. Default: None. Keys must be defined in the
-         keyring for this specific vault.
-        :param flags: Optional argument for defining some flags for this vaulted function. Flags that have an effect:
-         VaultFlags.debug(),
-         VaultFlags.input_var_can_be_missing(),
-         VaultFlags.permit_modifications()
-        """
         input_keys = input_keys if input_keys else list()
         return_keys = return_keys if return_keys else list()
 
@@ -311,7 +389,7 @@ class VarVault(object):
                 assert key in return_keys, f"Key {key} isn't defined as a return-key; return keys: {return_keys}"
             concurrent_execution(validate_keys_in_return_keys, mini.keys())
 
-            self._insert_returnvault(mini, *flags)
+            self._insert_minivault(mini, *flags)
 
     def _clean_return_var_keys(self, return_keys: Union[List[Key], Tuple[Key]]):
         self.log(f"Cleaning return var keys: {return_keys}")
@@ -351,16 +429,14 @@ class VarVault(object):
                 mini = MiniVault.build(return_keys, [ret])
         return mini
 
+    # ============================================================
+    # insert
+    # ============================================================
     def insert(self, key: Key, value: object, *flags: VaultFlags):
-        f"""
-        Inserts a value into the vault
-        
-        :param key: The {key} to insert the value to. Type must be {Key} 
-        :param value: The object to assign to {key}
-        :param flags: An optional set of flags to tweak the behavior of the insert. Flags that have an effect: 
-         VaultFlags.permit_modifications(), 
-         VaultFlags.debug()
-        """
+        #
+        # See abstract method in abstract class for an in-depth docstring.
+        #
+
         # Assert that key has correct type
         self._assert_key_is_correct_type(key)
 
@@ -370,10 +446,10 @@ class VarVault(object):
 
         # Key must be as an iterable, but value doesn't have to be
         mini = self._to_minivault([key], value, *flags)
-        self._insert_returnvault(mini, *flags)
+        self._insert_minivault(mini, *flags)
         self._reset_log_levels()
 
-    def _insert_returnvault(self, mini: MiniVault, *flags):
+    def _insert_minivault(self, mini: MiniVault, *flags):
         with self.lock:
             all_flags = self._get_all_flags(*flags)
 
@@ -406,17 +482,14 @@ class VarVault(object):
         # Validate the type of the value to insert into the vault
         assert key.type_is_valid(value), f"Value of type {type(value)} is not permitted; Valid type: {key.valid_type}"
 
+    # =======================================================================
+    # get_multiple
+    # =======================================================================
     def get_multiple(self, keys: List[Key], *flags: VaultFlags) -> MiniVault:
-        f"""
-        Get multiple objects from the vault that are mapped to keys in {keys}. 
-        
-        :param keys: A list of keys to get the objects for. Must be a list of {Key} objects
-        :param flags: An optional set of flags to tweak the behavior of the get. Flags that have an effect:
-         VaultFlags.debug(),
-         VaultFlags.input_var_can_be_missing()
-        :param default: An optional argument to define which value to return as default is the value doesn't exist in the vault. Default is {None}
-        :return: A ReturnVault with all the objects in the vault mapped to the keys, or {None} if it's not in the vault.  
-        """
+        #
+        # See abstract method in abstract class for an in-depth docstring.
+        #
+
         all_flags = self._get_all_flags(*flags)
         mini = MiniVault()
         for key in keys:
@@ -433,17 +506,14 @@ class VarVault(object):
             self._reset_log_levels()
         return mini
 
+    # ========================================================
+    # get
+    # ========================================================
     def get(self, key: Key, *flags: VaultFlags, default=None):
-        f"""
-        Get an object from the vault that is mapped to {key}. 
-        
-        :param key: The key to get an object for. Must be of type {Key}
-        :param flags: An optional set of flags to tweak the behavior of the get. Flags that have an effect:
-         VaultFlags.debug(),
-         VaultFlags.input_var_can_be_missing()
-        :param default: An optional argument to define which value to return as default is the value doesn't exist in the vault. Default is {None}
-        :return: The object in the vault mapped to the key, or {None} if it's not in the vault.  
-        """
+        #
+        # See abstract method in abstract class for an in-depth docstring.
+        #
+
         all_flags = self._get_all_flags(*flags)
         # Assert that key has correct type
         self._assert_key_is_correct_type(key)
@@ -491,7 +561,7 @@ class VarVault(object):
                                         f"figure out an appropriate solution for this problem. ")
 
             if current_hash != self.vault_file_from_hash:
-                mini = create_return_vault_from_file(self.vault_filename_from, self.keyring_class)
+                mini = create_mini_vault_from_file(self.vault_filename_from, self.keyring_class)
                 self.vault_file_from_hash = current_hash
                 self.vault.put(mini)
 

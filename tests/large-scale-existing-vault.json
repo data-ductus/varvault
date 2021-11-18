@@ -19,15 +19,15 @@
   "group_installers": {
     "ha1": {
       "installer": "~/version-5.4.4.linux.x86_64.installer.bin",
-      "installer-upgrade": "~/version-5.7.linux.x86_64.installer.bin"
+      "installer_upgrade": "~/version-5.7.linux.x86_64.installer.bin"
     },
     "ha2": {
       "installer": "~/version-5.4.4.linux.x86_64.installer.bin",
-      "installer-upgrade": "~/version-5.7.linux.x86_64.installer.bin"
+      "installer_upgrade": "~/version-5.7.linux.x86_64.installer.bin"
     },
     "ha3": {
       "installer": "~/version-5.4.4.linux.x86_64.installer.bin",
-      "installer-upgrade": "~/version-5.7.linux.x86_64.installer.bin"
+      "installer_upgrade": "~/version-5.7.linux.x86_64.installer.bin"
     }
   },
   "branch_custom": null,

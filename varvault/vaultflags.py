@@ -14,6 +14,10 @@ class VaultFlags(str):
     _LIVE_UPDATE = "live_update"
     _RETURN_TUPLE_IS_SINGLE_ITEM = "return_tuple_is_single_item"
     _SPLIT_RETURN_KEYS = "split_return_keys"
+    _FILE_IS_READ_ONLY = "file_is_read_only"
+    _DISABLE_LOGGER = "disable_logger"
+    _IGNORE_KEYS_NOT_IN_KEYRING = "ignore_keys_not_in_keyring"
+    _REMOVE_EXISTING_LOG_FILE = "remove_existing_log_file"
 
     def __new__(cls, name, *args, **kwargs):
         obj = super().__new__(cls, name)
@@ -85,3 +89,23 @@ class VaultFlags(str):
         By default, any return values from a decorated function must be able to be mapped to the keys defined as return keys. If two vaults are taking return values separately, 
         this wouldn't be possible. Usage of this flag REQUIRES that the return value is a MiniVault-object."""
         return VaultFlags(VaultFlags._SPLIT_RETURN_KEYS)
+
+    @staticmethod
+    def file_is_read_only():
+        f"""Flag to tell varvault that a vault-file used to create a vault from is read-only."""
+        return VaultFlags(VaultFlags._FILE_IS_READ_ONLY)
+
+    @staticmethod
+    def disable_logger():
+        f"""Flag to tell varvault to disable logger completely and not log anything to a log-file."""
+        return VaultFlags(VaultFlags._DISABLE_LOGGER)
+
+    @staticmethod
+    def ignore_keys_not_in_keyring():
+        f"""Flag to ignore keys not in keyring when creating a vault from an existing vault-file. If {VaultFlags.file_is_read_only} is enabled, this will be enabled by default."""
+        return VaultFlags(VaultFlags._IGNORE_KEYS_NOT_IN_KEYRING)
+
+    @staticmethod
+    def remove_existing_log_file():
+        """Flag to tell varvault to delete an existing log file when creating a vault from an existing vault-file"""
+        return VaultFlags(VaultFlags._REMOVE_EXISTING_LOG_FILE)

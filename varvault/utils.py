@@ -1,4 +1,6 @@
+import json
 import asyncio
+import hashlib
 import logging
 from types import *
 from typing import *
@@ -10,8 +12,6 @@ from .vaultstructs import VaultStructBase
 
 def md5hash(fname):
     """Get md5 hash of a file using hashlib"""
-    import hashlib
-
     hash_md5 = hashlib.md5()
     with open(fname, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
@@ -20,7 +20,7 @@ def md5hash(fname):
 
 
 def is_serializable(obj: object, logger: logging.Logger = None):
-    import json
+    f"""Function for testing whether or not an object can be serialized by simply trying to do {json.dumps} on the object. Returns {True} if {obj} can be serialized, otherwise {False}."""
 
     try:
         json.dumps(obj)
@@ -114,17 +114,14 @@ def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inpu
     return asyncio.run(do(target, *inputs, **kwargs))
 
 
-def create_return_vault_from_file(filename_from: str, keyring: Type[Keyring], live_update=False, **extra_keys) -> MiniVault:
+def create_mini_vault_from_file(filename_from: str, keyring: Type[Keyring], **extra_keys) -> MiniVault:
+    """Creates a minivault object from a file by."""
     import json
 
     assert issubclass(keyring, Keyring)
     vault_file_data = dict()
-    try:
-        vault_file_data = json.load(open(filename_from))
-    except FileNotFoundError as e:
-        if not live_update:
-            raise
-        pass
+
+    vault_file_data = json.load(open(filename_from))
     assert isinstance(vault_file_data, dict)
 
     # Get the keys from the file as a list.
