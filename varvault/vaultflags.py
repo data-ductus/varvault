@@ -20,6 +20,7 @@ class VaultFlags(str):
     _DISABLE_LOGGER = "disable_logger"
     _IGNORE_KEYS_NOT_IN_KEYRING = "ignore_keys_not_in_keyring"
     _REMOVE_EXISTING_LOG_FILE = "remove_existing_log_file"
+    _RETURN_KEY_CAN_BE_MISSING = "return_key_can_be_missing"
 
     def __new__(cls, name, *args, **kwargs):
         obj = super().__new__(cls, name)
@@ -137,3 +138,5 @@ class VaultFlags(str):
     def return_key_can_be_missing():
         """Flag to tell varvault when using a vaulter-decorated function and not returning objects for all keys to not fail and just set the keys defined.
          If this is set, the return variables MUST be inside a MiniVault object, otherwise varvault cannot determine what variable belongs to what key."""
+        return VaultFlags(VaultFlags._RETURN_KEY_CAN_BE_MISSING)
+

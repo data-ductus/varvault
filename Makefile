@@ -15,7 +15,7 @@ build: clean
 	@tar tzf dist/varvault-*.tar.gz
 
 .PHONY: upload
-upload: dependencies build
+upload: test-vault dependencies build
 	@python3 -m twine upload dist/*
 
 .PHONY: update-pip
