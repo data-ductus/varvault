@@ -41,6 +41,7 @@ class VarVaultInterface(abc.ABC):
          {VaultFlags.input_var_can_be_missing},
          {VaultFlags.permit_modifications},
          {VaultFlags.split_return_keys},
+         {VaultFlags.return_key_can_be_missing},
          {VaultFlags.clean_return_var_keys}
         """
         pass
@@ -376,14 +377,18 @@ class VarVault(VarVaultInterface):
         if VaultFlags.flag_is_set(VaultFlags.split_return_keys(), *all_flags):
             assert isinstance(ret, MiniVault), f"If {VaultFlags.split_return_keys()} is defined, you MUST return values in the form of a {MiniVault} object or we cannot determine which keys go where"
             ret = MiniVault({key: value for key, value in ret.items() if key in return_keys})
+        if VaultFlags.flag_is_set(VaultFlags.return_key_can_be_missing(), *all_flags):
+            assert isinstance(ret, MiniVault), f"If {VaultFlags.return_key_can_be_missing()} is defined, you MUST return values in the form of a {MiniVault} object or we " \
+                                               f"cannot determine which keys should be assigned to the vault and which should be skipped."
         if VaultFlags.flag_is_set(VaultFlags.clean_return_var_keys(), *all_flags):
             self._clean_return_var_keys(return_keys)
         else:
             mini = self._to_minivault(return_keys, ret, *flags)
 
-            async def validate_keys_in_mini_vault(key):
-                assert key in mini, f"Key {key} isn't present in MiniVault; keys in mini: {mini.keys()}"
-            concurrent_execution(validate_keys_in_mini_vault, return_keys)
+            async def validate_keys_in_mini_vault(key, can_be_missing=False):
+                assert key in mini or can_be_missing, f"Key {key} isn't present in MiniVault; keys in mini: {mini.keys()}. " \
+                                                      f"You can set the vault-flag {VaultFlags.return_key_can_be_missing()} to skip this validation step"
+            concurrent_execution(validate_keys_in_mini_vault, return_keys, can_be_missing=VaultFlags.flag_is_set(VaultFlags.return_key_can_be_missing(), *all_flags))
 
             async def validate_keys_in_return_keys(key):
                 assert key in return_keys, f"Key {key} isn't defined as a return-key; return keys: {return_keys}"

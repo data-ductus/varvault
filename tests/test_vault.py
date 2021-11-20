@@ -470,6 +470,39 @@ class TestVault:
         assert vault.get(Keyring.key_valid_type_is_str) == "valid"
         assert vault_secondary.get(Keyring.key_valid_type_is_int) == 1
 
+    def test_return_key_can_be_missing(self):
+        vault = varvault.create_vault(Keyring, "vault", varvault_vault_filename_to=vault_file_new)
+        @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        def _set_failed():
+            return "valid"
+
+        try:
+            # Should fail saying that number of returned items do not match the number of keys
+            _set_failed()
+            pytest.fail("Managed to set a single variable to two keys or something")
+        except:
+            logger.info("Expected error received; test passed")
+
+        @vault.vaulter(varvault.VaultFlags.return_key_can_be_missing(), return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        def _set_failed_again():
+            return "valid"
+
+        try:
+            _set_failed_again()
+            pytest.fail(f"Managed to set a single variable when {varvault.VaultFlags.return_key_can_be_missing()} is defined; "
+                        f"Should have failed saying return var must be of type {varvault.MiniVault}")
+        except:
+            logger.info("Expected error received; test passed")
+
+        @vault.vaulter(varvault.VaultFlags.return_key_can_be_missing(), return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        def _set_working():
+            return varvault.MiniVault({Keyring.key_valid_type_is_str: "valid"})
+
+        _set_working()
+        assert Keyring.key_valid_type_is_str in vault
+        assert Keyring.key_valid_type_is_int not in vault
+        assert vault.get(Keyring.key_valid_type_is_str) == "valid"
+
 
 class TestLogging:
     @classmethod

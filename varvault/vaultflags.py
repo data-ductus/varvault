@@ -109,3 +109,8 @@ class VaultFlags(str):
     def remove_existing_log_file():
         """Flag to tell varvault to delete an existing log file when creating a vault from an existing vault-file"""
         return VaultFlags(VaultFlags._REMOVE_EXISTING_LOG_FILE)
+
+    @staticmethod
+    def return_key_can_be_missing():
+        """Flag to tell varvault when using a vaulter-decorated function and not returning objects for all keys to not fail and just set the keys defined.
+         If this is set, the return variables MUST be inside a MiniVault object, otherwise varvault cannot determine what variable belongs to what key."""
