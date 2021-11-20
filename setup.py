@@ -10,7 +10,7 @@ README = pathlib.Path(f"{HERE}/README.md").read_text()
 # Version handling
 MAJOR = 1  # Change this if the previous MAJOR is incompatible with this build. Set MINOR and PATCH to 0
 MINOR = 1  # Change this if the functionality has changed, but we are still backwards compatible with previous MINOR versions. Set PATCH to 0
-PATCH = 1  # Change this is if we are fixing a bug that doesn't change the functionality. If a bug fix has caused functionality to be changed, see MINOR instead
+PATCH = 2  # Change this is if we are fixing a bug that doesn't change the functionality. If a bug fix has caused functionality to be changed, see MINOR instead
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 
 # This call to setup() does all the work
