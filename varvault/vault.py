@@ -38,11 +38,11 @@ class VarVaultInterface(abc.ABC):
         :param flags: Optional argument for defining some flags for this vaulted function. Flags that have an effect:
          {VaultFlags.debug},
          {VaultFlags.silent},
-         {VaultFlags.input_var_can_be_missing},
+         {VaultFlags.input_key_can_be_missing},
          {VaultFlags.permit_modifications},
          {VaultFlags.split_return_keys},
          {VaultFlags.return_key_can_be_missing},
-         {VaultFlags.clean_return_var_keys}
+         {VaultFlags.clean_return_keys}
         """
         pass
 
@@ -76,7 +76,7 @@ class VarVaultInterface(abc.ABC):
         :param flags: An optional set of flags to tweak the behavior of the get. Flags that have an effect:
          {VaultFlags.debug},
          {VaultFlags.silent},
-         {VaultFlags.input_var_can_be_missing}
+         {VaultFlags.input_key_can_be_missing}
         :return: A {MiniVault} with all the objects in the vault mapped to the keys, or {None} if it's not in the vault.  
         """
         pass
@@ -93,7 +93,7 @@ class VarVaultInterface(abc.ABC):
         :param flags: An optional set of flags to tweak the behavior of the get. Flags that have an effect:
          {VaultFlags.debug},
          {VaultFlags.silent},
-         {VaultFlags.input_var_can_be_missing}
+         {VaultFlags.input_key_can_be_missing}
         :param default: An optional argument to define which value to return as default is the value doesn't exist in the vault. Default is {None}
         :return: The object in the vault mapped to the {key}, or {None} if it's not in the vault.  
         """
@@ -168,7 +168,7 @@ class VarVault(VarVaultInterface):
             self.logger = get_logger(varvault_vault_name, remove_existing_log_file) if not disable_logger else None
 
         self.lock = Lock()
-        assert not VaultFlags.flag_is_set(VaultFlags.clean_return_var_keys(), *self.flags), f"You really should not set {VaultFlags.clean_return_var_keys()} " \
+        assert not VaultFlags.flag_is_set(VaultFlags.clean_return_keys(), *self.flags), f"You really should not set {VaultFlags.clean_return_var_keys()} " \
                                                                                             f"to the vault itself as that would be an extremely bad idea."
 
         # Get the keys from the keyring and expand it with extra keys
@@ -380,8 +380,8 @@ class VarVault(VarVaultInterface):
         if VaultFlags.flag_is_set(VaultFlags.return_key_can_be_missing(), *all_flags):
             assert isinstance(ret, MiniVault), f"If {VaultFlags.return_key_can_be_missing()} is defined, you MUST return values in the form of a {MiniVault} object or we " \
                                                f"cannot determine which keys should be assigned to the vault and which should be skipped."
-        if VaultFlags.flag_is_set(VaultFlags.clean_return_var_keys(), *all_flags):
-            self._clean_return_var_keys(return_keys)
+        if VaultFlags.flag_is_set(VaultFlags.clean_return_keys(), *all_flags):
+            self._clean_return_keys(return_keys)
         else:
             mini = self._to_minivault(return_keys, ret, *flags)
 
@@ -396,7 +396,7 @@ class VarVault(VarVaultInterface):
 
             self._insert_minivault(mini, *flags)
 
-    def _clean_return_var_keys(self, return_keys: Union[List[Key], Tuple[Key]]):
+    def _clean_return_keys(self, return_keys: Union[List[Key], Tuple[Key]]):
         self.log(f"Cleaning return var keys: {return_keys}")
         for key in return_keys:
             if not key.valid_type:
@@ -503,10 +503,10 @@ class VarVault(VarVaultInterface):
             self._try_reload_from_file()
 
             self._configure_log_levels_based_on_flags(*all_flags)
-            if not VaultFlags.flag_is_set(VaultFlags.input_var_can_be_missing(), *all_flags):
+            if not VaultFlags.flag_is_set(VaultFlags.input_key_can_be_missing(), *all_flags):
                 for key in keys:
                     assert key in self, f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. " \
-                                        f"You can set the flag '{VaultFlags.input_var_can_be_missing()}' to avoid this, in which case the value will be {None}, or make sure a value is mapped to it."
+                                        f"You can set the flag '{VaultFlags.input_key_can_be_missing()}' to avoid this, in which case the value will be {None}, or make sure a value is mapped to it."
             [mini.update({key: self.vault.get(key)}) for key in keys]
             self._reset_log_levels()
         return mini
@@ -528,9 +528,9 @@ class VarVault(VarVaultInterface):
 
             self._configure_log_levels_based_on_flags(*all_flags)
 
-            if not VaultFlags.flag_is_set(VaultFlags.input_var_can_be_missing(), *all_flags):
+            if not VaultFlags.flag_is_set(VaultFlags.input_key_can_be_missing(), *all_flags):
                 assert key in self, f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. " \
-                                    f"You can set the flag '{VaultFlags.input_var_can_be_missing()}' to avoid this, in which case the value will be {None}, or make sure a value is mapped to it."
+                                    f"You can set the flag '{VaultFlags.input_key_can_be_missing()}' to avoid this, in which case the value will be {None}, or make sure a value is mapped to it."
 
             self.log(f"Getting value for key {key} from vault")
             value = self.vault.get(key, default)

@@ -399,7 +399,7 @@ class TestVault:
 
         assert vault_new.get(Keyring.key_valid_type_is_str) == "valid"
 
-        @vault_new.vaulter(varvault.VaultFlags.clean_return_var_keys(), return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.vaulter(varvault.VaultFlags.clean_return_keys(), return_keys=Keyring.key_valid_type_is_str)
         def _clean():
             return
 
@@ -425,7 +425,7 @@ class TestVault:
             return {"a": 1, "b": 2, "c": 3}
         _set_valid()
 
-        @vault_new.vaulter(varvault.VaultFlags.clean_return_var_keys(), return_keys=extra_key1)
+        @vault_new.vaulter(varvault.VaultFlags.clean_return_keys(), return_keys=extra_key1)
         def _clean():
             return
         _clean()
