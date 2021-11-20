@@ -168,8 +168,8 @@ class VarVault(VarVaultInterface):
             self.logger = get_logger(varvault_vault_name, remove_existing_log_file) if not disable_logger else None
 
         self.lock = Lock()
-        assert not VaultFlags.flag_is_set(VaultFlags.clean_return_keys(), *self.flags), f"You really should not set {VaultFlags.clean_return_var_keys()} " \
-                                                                                            f"to the vault itself as that would be an extremely bad idea."
+        assert not VaultFlags.flag_is_set(VaultFlags.clean_return_keys(), *self.flags), f"You really should not set {VaultFlags.clean_return_keys()} " \
+                                                                                        f"to the vault itself as that would be an extremely bad idea."
 
         # Get the keys from the keyring and expand it with extra keys
         self.keys: Dict[str, Key] = self.keyring_class.get_keys_in_keyring()
