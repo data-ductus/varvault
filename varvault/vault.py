@@ -246,7 +246,7 @@ class VarVault(VarVaultInterface):
 
         input_keys = input_keys if input_keys else list()
         return_keys = return_keys if return_keys else list()
-
+        all_flags = self._get_all_flags(*flags)
         # Validate the input to the decorator
         self._vaulter__validate_input(input_keys, return_keys)
 
@@ -261,9 +261,8 @@ class VarVault(VarVaultInterface):
 
             def pre_call(**kwargs):
                 self._try_reload_from_file()
-                input_kwargs = self._vaulter__build_input_var_keys(input_keys, kwargs, *flags)
+                input_kwargs = self._vaulter__build_input_var_keys(input_keys, kwargs, *all_flags)
                 kwargs.update(input_kwargs)
-                all_flags = self._get_all_flags(*flags)
                 self._configure_log_levels_based_on_flags(*all_flags)
                 assert callable(func)
 
@@ -282,7 +281,8 @@ class VarVault(VarVaultInterface):
                 return input_kwargs
 
             def post_call(ret):
-                self._vaulter__handle_return_vars(ret, return_keys, *flags)
+                self._configure_log_levels_based_on_flags(*all_flags)
+                self._vaulter__handle_return_vars(ret, return_keys, *all_flags)
                 self.log(f"<<<<< {func.__module__}.{func.__name__}:")
                 self.log(f"======{'=' * len(func.__module__ + '.' + func.__name__)}=\n")
                 self._reset_log_levels()
