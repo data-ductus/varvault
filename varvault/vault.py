@@ -445,27 +445,25 @@ class VarVault(VarVaultInterface):
         # Assert that key has correct type
         self._assert_key_is_correct_type(key)
 
-        self._insert__assert_key_in_keyring(key)
-
         self._configure_log_levels_based_on_flags(*self._get_all_flags(*flags))
 
         # Key must be as an iterable, but value doesn't have to be
-        mini = self._to_minivault([key], value, *flags)
-        self._insert_minivault(mini, *flags)
+        mini = self._to_minivault([key], value, *self._get_all_flags(*flags))
+        self._insert_minivault(mini, *self._get_all_flags(*flags))
         self._reset_log_levels()
 
     def _insert_minivault(self, mini: MiniVault, *flags):
-        with self.lock:
-            all_flags = self._get_all_flags(*flags)
+        all_flags = self._get_all_flags(*flags)
 
+        async def assert_key_and_value_may_be_inserted(key, value):
             if VaultFlags.flag_is_set(VaultFlags.return_values_cannot_be_none(), *all_flags):
-                assert all([v for v in mini.values() if v is not None]), f"Some or all values returned are {None}, and {VaultFlags.return_values_cannot_be_none()} " \
-                                                                         f"has been defined which means no return value may be {None}"
+                assert value is not None, f"The value mapped to {key} is {None} and {VaultFlags.return_values_cannot_be_none()} is defined."
 
-            if not VaultFlags.flag_is_set(VaultFlags.permit_modifications(), *all_flags):
-                keys_already_in_vault = [k for k in mini.keys() if k in self]
-                assert len(keys_already_in_vault) == 0, f"Keys {keys_already_in_vault} are already in the vault and {VaultFlags.permit_modifications()} is not set. " \
-                                                        f"By default, modifications to existing keys are not permitted."
+            self._insert__assert_key_in_keyring(key)
+            self._insert__assert_value_may_be_inserted(key, value, modifications_permitted=VaultFlags.flag_is_set(VaultFlags.permit_modifications(), *all_flags))
+        concurrent_execution(assert_key_and_value_may_be_inserted, mini.keys(), mini.values())
+
+        with self.lock:
             self.log("-------------------")
             self.log("Variables going in:")
             for ret_key, ret_value in mini.items():
@@ -473,11 +471,8 @@ class VarVault(VarVaultInterface):
             self.vault.put(mini)
             self.log("-----------------")
 
-    def _insert__assert_key_in_keyring(self, key: Key, skip=False):
-        """Assert that the key is in the keyring. This step is skipped if force==True"""
-        if skip:
-            # Skip this step
-            return
+    def _insert__assert_key_in_keyring(self, key: Key):
+        """Assert that the key is in the keyring"""
         assert key in self.keys
 
     def _insert__assert_value_may_be_inserted(self, key: Key, value: object, modifications_permitted=False):

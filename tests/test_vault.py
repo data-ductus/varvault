@@ -206,7 +206,6 @@ class TestVault:
 
             pytest.fail("Managed to set a new value to an existing key while modifications are not permitted")
         except Exception as e:
-            assert "Keys ['key_valid_type_is_str'] are already in the vault and permit_modifications is not set." in str(e), f"Unexpected error: {e}"
             logger.info(f"Expected error received; test passed")
             assert vault.get(Keyring.key_valid_type_is_str) == "valid", f"Value for {Keyring.key_valid_type_is_str} is not what it should be"
 
@@ -480,7 +479,7 @@ class TestVault:
             # Should fail saying that number of returned items do not match the number of keys
             _set_failed()
             pytest.fail("Managed to set a single variable to two keys or something")
-        except:
+        except Exception:
             logger.info("Expected error received; test passed")
 
         @vault.vaulter(varvault.VaultFlags.return_key_can_be_missing(), return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
@@ -491,7 +490,7 @@ class TestVault:
             _set_failed_again()
             pytest.fail(f"Managed to set a single variable when {varvault.VaultFlags.return_key_can_be_missing()} is defined; "
                         f"Should have failed saying return var must be of type {varvault.MiniVault}")
-        except:
+        except Exception:
             logger.info("Expected error received; test passed")
 
         @vault.vaulter(varvault.VaultFlags.return_key_can_be_missing(), return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
@@ -502,6 +501,18 @@ class TestVault:
         assert Keyring.key_valid_type_is_str in vault
         assert Keyring.key_valid_type_is_int not in vault
         assert vault.get(Keyring.key_valid_type_is_str) == "valid"
+
+    def test_validate_types_in_minivault_return_values(self):
+        vault = varvault.create_vault(Keyring, "vault", varvault_vault_filename_to=vault_file_new)
+        @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        def _set_failed():
+            return varvault.MiniVault({Keyring.key_valid_type_is_str: 1, Keyring.key_valid_type_is_int: "invalid"})
+        try:
+            _set_failed()
+            pytest.fail("Managed to set invalid values to the vault by returning them in a minivault.")
+        except Exception as e:
+            logger.info(f"Expected error received; test passed: {e}")
+
 
 
 class TestLogging:
