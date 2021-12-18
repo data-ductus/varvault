@@ -1,4 +1,4 @@
-from .keyring import Key, Keyring
+from .keyring import Key, Keyring, validator
 
 from .minivault import MiniVault
 

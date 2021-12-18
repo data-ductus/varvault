@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+from typing import Dict
+
 import pytest
 import logging
 import tempfile
@@ -119,11 +121,11 @@ class VaultStructInt(varvault.VaultStructIntBase):
 
 
 class KeyringVaultStruct(varvault.Keyring):
-    key_vault_struct_dict = varvault.Key("key_vault_struct_dict", VaultStructDict)
-    key_vault_struct_list = varvault.Key("key_vault_struct_list", VaultStructList)
-    key_vault_struct_string = varvault.Key("key_vault_struct_string", VaultStructString)
-    key_vault_struct_float = varvault.Key("key_vault_struct_float", VaultStructFloat)
-    key_vault_struct_int = varvault.Key("key_vault_struct_int", VaultStructInt)
+    key_vault_struct_dict = varvault.Key("key_vault_struct_dict", valid_type=VaultStructDict)
+    key_vault_struct_list = varvault.Key("key_vault_struct_list", valid_type=VaultStructList)
+    key_vault_struct_string = varvault.Key("key_vault_struct_string", valid_type=VaultStructString)
+    key_vault_struct_float = varvault.Key("key_vault_struct_float", valid_type=VaultStructFloat)
+    key_vault_struct_int = varvault.Key("key_vault_struct_int", valid_type=VaultStructInt)
 
 
 class TestVault:
@@ -471,6 +473,7 @@ class TestVault:
 
     def test_return_key_can_be_missing(self):
         vault = varvault.create_vault(Keyring, "vault", varvault_vault_filename_to=vault_file_new)
+
         @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def _set_failed():
             return "valid"
@@ -504,6 +507,7 @@ class TestVault:
 
     def test_validate_types_in_minivault_return_values(self):
         vault = varvault.create_vault(Keyring, "vault", varvault_vault_filename_to=vault_file_new)
+
         @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def _set_failed():
             return varvault.MiniVault({Keyring.key_valid_type_is_str: 1, Keyring.key_valid_type_is_int: "invalid"})
@@ -513,6 +517,91 @@ class TestVault:
         except Exception as e:
             logger.info(f"Expected error received; test passed: {e}")
 
+    def test_validator_decorator(self):
+        try:
+            @varvault.validator(function_asserts=True, function_returns_bool=True)
+            def invalid_decorator_use(value):
+                pass
+            pytest.fail("Managed to register a validator function that should not be possible to register. Both 'function_asserts' and 'function_returns_bool' should not be possible to set at the same time")
+        except SyntaxError as e:
+            logger.info(f"Expected error received; test passed: {e}")
+
+        try:
+            @varvault.validator()
+            def invalid_decorator_use(value, this_arg_must_not_exist):
+                pass
+            pytest.fail("Managed to register a validator function that should not be possible to register. Managed to register a validator function with more than 1 positional arg called 'keyvalue'")
+        except Exception as e:
+            logger.info(f"Expected error received; test passed: {e}")
+
+        try:
+            @varvault.validator(function_asserts=True)
+            def invalid_decorator_use(value):
+                pass
+            pytest.fail("Managed to register a validator function that should not be possible to register. The function needs to contain a call 'assert' in the source if 'function_asserts' is set to True")
+        except Exception as e:
+            logger.info(f"Expected error received; test passed: {e}")
+
+        try:
+            @varvault.validator(function_returns_bool=True)
+            def invalid_decorator_use(value) -> bool:
+                pass
+            pytest.fail("Managed to register a validator function that should not be possible to register. The function needs to return something in the source if 'function_returns_bool' is set to True")
+        except Exception as e:
+            logger.info(f"Expected error received; test passed: {e}")
+
+        @varvault.validator(function_asserts=True, skip_source_assertions=True)
+        def valid_decorator_use_1(value):
+            pass
+
+        @varvault.validator(function_returns_bool=True, skip_source_assertions=True)
+        def valid_decorator_use_2(value) -> bool:
+            pass
+
+    def test_key_validation_function(self):
+        # This will validate the function and assign some attributes to it that varvault will use when validating the value for the key
+        @varvault.validator(function_returns_bool=True)
+        def must_be_even(value: int) -> bool:
+            return (value % 2) == 0
+
+        @varvault.validator(function_asserts=True)
+        def cannot_be_negative(value: int):
+            assert value >= 0
+
+        @varvault.validator()
+        def no_dashes(value: str):
+            assert "-" not in value
+
+        class KeyringKeyValidationFunction(varvault.Keyring):
+            int_must_be_even_number = varvault.Key("int_must_be_even_number", valid_type=int, validators=(must_be_even, cannot_be_negative))
+            no_dashes_in_str = varvault.Key("no_dashes_in_str", valid_type=str, validators=no_dashes)
+
+        vault = varvault.create_vault(KeyringKeyValidationFunction, "vault", varvault_vault_filename_to=vault_file_new)
+
+        try:
+            vault.insert(KeyringKeyValidationFunction.int_must_be_even_number, 1)
+            pytest.fail(f"Managed to set {KeyringKeyValidationFunction.int_must_be_even_number} to an uneven number via {vault.insert.__name__}. This should not be possible.")
+        except Exception as e:
+            logger.info(f"Expected error received; test passed: {e}")
+
+        @vault.vaulter(return_keys=KeyringKeyValidationFunction.int_must_be_even_number)
+        def set_failed():
+            return 5
+        try:
+            set_failed()
+            pytest.fail(f"Managed to set {KeyringKeyValidationFunction.int_must_be_even_number} to an uneven number via {vault.vaulter.__name__}. This should not be possible")
+        except Exception as e:
+            logger.info(f"Expected error received; test passed: {e}")
+
+        vault.insert(KeyringKeyValidationFunction.int_must_be_even_number, 2)
+        assert KeyringKeyValidationFunction.int_must_be_even_number in vault and vault.get(KeyringKeyValidationFunction.int_must_be_even_number) == 2
+
+        @vault.vaulter(varvault.VaultFlags.permit_modifications(), return_keys=KeyringKeyValidationFunction.int_must_be_even_number)
+        def set():
+            return 4
+        set()
+
+        assert KeyringKeyValidationFunction.int_must_be_even_number in vault and vault.get(KeyringKeyValidationFunction.int_must_be_even_number) == 4
 
 
 class TestLogging:
