@@ -14,7 +14,7 @@ README = pathlib.Path(f"{HERE}/README.md").read_text()
 # A good way to tell if we are backwards compatible is to run the test suite and if the tests pass without requiring any changes, we can pretty safely assume we are backwards compatible.
 MAJOR = 1  # Change this if the previous MAJOR is incompatible with this build. Set MINOR and PATCH to 0
 MINOR = 2  # Change this if the functionality has changed, but we are still backwards compatible with previous MINOR versions. Set PATCH to 0
-PATCH = 0  # Change this is if we are fixing a bug that doesn't change the functionality. If a bug-fix has caused functionality to be changed, see MINOR instead
+PATCH = 1  # Change this is if we are fixing a bug that doesn't change the functionality. If a bug-fix has caused functionality to be changed, see MINOR instead
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 
 

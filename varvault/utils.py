@@ -133,13 +133,13 @@ def create_mini_vault_from_file(filename_from: str, keyring: Type[Keyring], **ex
         if key_in_file not in keys_from_keyring:
             return
         key: Key = keys_from_keyring[key_in_file]
-        if issubclass(key.valid_type, VaultStructBase):
+        if key.valid_type and issubclass(key.valid_type, VaultStructBase):
             return_vault_data[key] = key.valid_type.build_from_vault_key(key_in_file, vault_file_data[key_in_file])
         else:
             if key.can_be_none and vault_file_data[key_in_file] is None:
                 return_vault_data[key] = None
             else:
-                assert isinstance(vault_file_data[key_in_file], key.valid_type), f"Key type missmatch ({key}; Valid type {key.valid_type}, actual type: {type(vault_file_data[key_in_file])}"
+                assert key.valid_type is None or isinstance(vault_file_data[key_in_file], key.valid_type), f"Key type missmatch ({key}; Valid type {key.valid_type}, actual type: {type(vault_file_data[key_in_file])}"
                 return_vault_data[key] = vault_file_data[key_in_file]
 
     concurrent_execution(build, vault_file_data.keys())

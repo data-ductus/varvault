@@ -197,6 +197,13 @@ class TestVault:
         assert json.load(open(vault_file_new)).get(Keyring.key_valid_type_is_str) == "modded", f"The value for {Keyring.key_valid_type_is_str} in vault_filename_to is not the expected"
         assert json.load(open(existing_vault)).get(Keyring.key_valid_type_is_str) == "valid", f"The value for {Keyring.key_valid_type_is_str} in vault_filename_from has changed. This is very bad"
 
+    def test_create_from_vault_no_valid_type_in_key(self):
+        class KeyringTemp(varvault.Keyring):
+            key_valid_type_is_str = varvault.Key("key_valid_type_is_str")
+            key_valid_type_is_int = varvault.Key("key_valid_type_is_int")
+
+        vault = varvault.from_vault(KeyringTemp, "from-vault", existing_vault, varvault_vault_filename_to=vault_file_new)
+
     def test_permit_modifications(self):
         vault = varvault.create_vault(Keyring, "vault", varvault_vault_filename_to=vault_file_new)
         vault.insert(Keyring.key_valid_type_is_str, "valid")
