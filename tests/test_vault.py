@@ -610,6 +610,22 @@ class TestVault:
 
         assert KeyringKeyValidationFunction.int_must_be_even_number in vault and vault.get(KeyringKeyValidationFunction.int_must_be_even_number) == 4
 
+    def test_add_minivault_function(self):
+        vault = varvault.create_vault(Keyring, "vault", varvault_vault_filename_to=vault_file_new)
+
+        @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        def insert():
+            mv = varvault.MiniVault()
+            mv.add(Keyring.key_valid_type_is_str, "valid")
+            mv.add(Keyring.key_valid_type_is_int, 1)
+
+            return mv
+
+        insert()
+
+        assert Keyring.key_valid_type_is_str in vault and vault.get(Keyring.key_valid_type_is_str) == "valid"
+        assert Keyring.key_valid_type_is_int in vault and vault.get(Keyring.key_valid_type_is_int) == 1
+
 
 class TestLogging:
     @classmethod

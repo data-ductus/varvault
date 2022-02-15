@@ -30,3 +30,7 @@ class MiniVault(dict):
                                              f"Is the order of your keys and values passed to '{MiniVault.build.__name__}' wrong?"
             data[key] = value
         return MiniVault(data)
+
+    def add(self, k, v):
+        """Adds a value mapped to a key. Essentially just wraps the '__setitem__' function."""
+        self.__setitem__(k, v)
