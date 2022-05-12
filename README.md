@@ -29,7 +29,7 @@ class Keyring(varvault.Keyring):
     arg2 = varvault.Key("arg2")
 
 
-vault = varvault.create_vault(Keyring, "example-vault", "~/.vault/vault.json", varvault.VaultFlags.return_values_cannot_be_none()))
+vault = varvault.create_vault(Keyring, "example-vault", varvault.VaultFlags.return_values_cannot_be_none(), varvault_vault_filename_to="~/.vault/vault.json", varvault_filehandler_class=varvault.FileTypes.JSON))
 
 
 @vault.vaulter(return_keys=[Keyring.arg1, Keyring.arg2])
@@ -68,9 +68,11 @@ if __name__ == "__main__":
    Optionally, you can define some flags to further tweak the behavior of the vault. These tweaked behaviors include
    allowing for existing key-value pairs to be modified (this is not allowed by default), allowing return variables from
    functions defined with return keys to be None, and setting a flag to write some additional debug logs.
-   You can also define a .JSON file to be used as a vault file to store all the arguments in.
+   You can also define a .JSON file to be used as a vault file to store all the arguments in. 
+   In this example, we use the provided file-handler `JsonFileHandler` (which is assigned to `varvault.FileTypes.JSON` internally), 
+   but it's also possible to provide a custom file-handler object if you want to create your own file type.  
 
-3. We create a function called `create_args` that takes some arguments (we have to insert variables
+4. We create a function called `create_args` that takes some arguments (we have to insert variables
    into the vault somehow, right?) that we annotate with the vault decorator. We pass an argument to the
    decorator called `return_keys`. This argument tells the vault which keys this function will assign its
    return variables to. Note that the order of the return keys matter. In this case, the ingoing argument `arg1` will
@@ -83,7 +85,7 @@ if __name__ == "__main__":
    those return variables in the vault with the keys that were passed to the decorator. These variables can then be 
    accessed by another function that uses the same vault-object as this one does.
 
-4. We then create a new function called `use_args` that we also annotate with the vault decorator. We pass a different
+5. We then create a new function called `use_args` that we also annotate with the vault decorator. We pass a different
    argument to the decorator this time called `input_keys`. This argument tells the vault which keys in the vault
    we want passed to this function. The order of the keys doesn't really matter here, the order is mostly aesthetic.
    
@@ -96,16 +98,16 @@ if __name__ == "__main__":
    a default value, like None. Otherwise, when you call the function, you have to call the function with the arguments
    fulfilled as well.
 
-5. We create a very simple function called `run_create_args` which doesn't get annotated. This function is simply made
+6. We create a very simple function called `run_create_args` which doesn't get annotated. This function is simply made
    to demonstrate what makes this vault so useful. When this function is called, it will obviously call `create_args`,
    which will create  Keyring.arg1` and `Keyring.arg2` which will then be stored in the vault.
 
-6. A final function called `run_use_args` is then created which calls the `use_args` function. This function
+7. A final function called `run_use_args` is then created which calls the `use_args` function. This function
    is able to use the arguments defined in `create_args` because with this vault, the context for where a function runs
    doesn't really matter as long as the input variables it needs exists in the vault-object already, and the function
    exists in that scope.
 
-7. Lastly, the variables that were involved in the execution of this code can be viewed by simply checking the contents 
+8. Lastly, the variables that were involved in the execution of this code can be viewed by simply checking the contents 
    of the file `~/.vault/vault.json`. In this example the file would simply contain: 
    ```
    {
@@ -113,12 +115,13 @@ if __name__ == "__main__":
      "arg2": 2
    }
    ```
-8. When a file such as this (see above) exists, it's very possible to re-create the same vault again from this file. 
+9. When a file such as this (see above) exists, it's very possible to re-create the same vault again from this file. 
    In order to re-create the same vault again simply do this: 
    ```
    vault = varvault.from_vault_file(Keyring,
                                     "example-vault",
                                     "~/.vault/vault.json",
+                                    varvault.FileTypes.JSON,
                                     varvault.VaultFlags.permit_modifications()))
    ```
    When re-creating a vault from an existing file it's recommended to allow modifications 

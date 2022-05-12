@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import warnings
-
 
 class VaultFlags(str):
     """Class that represents flags that may be used for a vaulted
@@ -21,6 +19,7 @@ class VaultFlags(str):
     _IGNORE_KEYS_NOT_IN_KEYRING = "ignore_keys_not_in_keyring"
     _REMOVE_EXISTING_LOG_FILE = "remove_existing_log_file"
     _RETURN_KEY_CAN_BE_MISSING = "return_key_can_be_missing"
+    _NO_ERROR_LOGGING = "no_error_logging"
 
     def __new__(cls, name, *args, **kwargs):
         obj = super().__new__(cls, name)
@@ -51,30 +50,10 @@ class VaultFlags(str):
         By default, varvault doesn't permit modifications to existing keys as this can cause unintended behavior."""
         return VaultFlags(VaultFlags._PERMIT_MODIFICATIONS)
 
-    # FIXME: Remove this in 2.0.0
-    @staticmethod
-    def input_var_can_be_missing():
-        f"""Flag to set if an input variable may be missing in a vault when it is accessed. In this case, the key will be sent to kwargs but it will be mapped to {None}."""
-        warnings.warn(f"Using deprecated vault-flag {VaultFlags.input_var_can_be_missing.__name__}. "
-                      f"This function is deprecated and will be removed in 2.0.0. Please use {VaultFlags.input_key_can_be_missing.__name__} instead",
-                      category=DeprecationWarning)
-        return VaultFlags.input_key_can_be_missing()
-
     @staticmethod
     def input_key_can_be_missing():
         f"""Flag to set if an input variable may be missing in a vault when it is accessed. In this case, the key will be sent to kwargs but it will be mapped to {None}."""
         return VaultFlags(VaultFlags._INPUT_KEY_CAN_BE_MISSING)
-
-    # FIXME: Remove this in 2.0.0
-    @staticmethod
-    def clean_return_var_keys():
-        f"""Flag to clean return keys in a vault defined for a decorated function. This can be used during a cleanup stage. 
-        Varvault will try to map the key to a default value for the valid type, like for example str(), or list(). If it doesn't work, the key will be mapped to {None}."""
-        warnings.warn(f"Using deprecated vault-flag {VaultFlags.clean_return_var_keys.__name__}. "
-                      f"This function is deprecated and will be removed in 2.0.0. Please use {VaultFlags.clean_return_keys.__name__} instead",
-                      category=DeprecationWarning,
-                      stacklevel=2)
-        return VaultFlags.clean_return_keys()
 
     @staticmethod
     def clean_return_keys():
@@ -138,3 +117,9 @@ class VaultFlags(str):
         """Flag to tell varvault when using a vaulter-decorated function and not returning objects for all keys to not fail and just set the keys defined.
          If this is set, the return variables MUST be inside a MiniVault object, otherwise varvault cannot determine what variable belongs to what key."""
         return VaultFlags(VaultFlags._RETURN_KEY_CAN_BE_MISSING)
+
+    @staticmethod
+    def no_error_logging():
+        """Flag to tell a vaulter-decorated function to not log exceptions. Exceptions can sometimes be expected,
+        and sometimes it might be preferable to not log errors using varvault and just log them normally."""
+        return VaultFlags(VaultFlags._NO_ERROR_LOGGING)

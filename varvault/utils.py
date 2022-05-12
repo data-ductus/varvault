@@ -8,6 +8,7 @@ from typing import *
 from .keyring import Keyring, Key
 from .minivault import MiniVault
 from .vaultstructs import VaultStructBase
+from .filehandlers import BaseFileHandler
 
 
 def md5hash(fname):
@@ -21,7 +22,6 @@ def md5hash(fname):
 
 def is_serializable(obj: object, logger: logging.Logger = None):
     f"""Function for testing whether or not an object can be serialized by simply trying to do {json.dumps} on the object. Returns {True} if {obj} can be serialized, otherwise {False}."""
-
     try:
         json.dumps(obj)
         return True
@@ -114,18 +114,17 @@ def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inpu
     return asyncio.run(do(target, *inputs, **kwargs))
 
 
-def create_mini_vault_from_file(filename_from: str, keyring: Type[Keyring], **extra_keys) -> MiniVault:
-    """Creates a minivault object from a file by."""
-    import json
+def create_mini_vault_from_file(varvault_filename_from: str, varvault_keyring: Type[Keyring], varvault_filehandler_class: Type[BaseFileHandler], varvault_live_update=False, varvault_file_is_read_only=False, **extra_keys) -> MiniVault:
+    f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the {varvault_filehandler_class} passed."""
 
-    assert issubclass(keyring, Keyring)
-    vault_file_data = dict()
+    assert issubclass(varvault_keyring, Keyring)
+    filehandler = varvault_filehandler_class(varvault_filename_from, varvault_live_update, varvault_file_is_read_only)
+    vault_file_data = filehandler.read()
 
-    vault_file_data = json.load(open(filename_from))
     assert isinstance(vault_file_data, dict)
 
     # Get the keys from the file as a list.
-    keys_from_keyring = keyring.get_keys_in_keyring()
+    keys_from_keyring = varvault_keyring.get_keys_in_keyring()
     keys_from_keyring.update(extra_keys)
     return_vault_data = dict()
 
