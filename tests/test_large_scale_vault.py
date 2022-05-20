@@ -3,8 +3,8 @@ import os
 import sys
 import time
 
-import pytest
 import logging
+
 DIR = os.path.dirname(os.path.realpath(__file__))
 path = f"{os.path.dirname(DIR)}"
 temp_path = [path]
@@ -128,8 +128,14 @@ class KeyringLargeScale(varvault.Keyring):
 
 class TestLargeScaleVault:
 
+    def setup_method(self):
+        try:
+            os.remove(vault_file_new)
+        except:
+            pass
+
     def test_load_from_large_vault(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.remove_existing_log_file(), varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.FileTypes.JSON, varvault.VaultFlags.remove_existing_log_file(), varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
         logger.info("Created the vault from file")
         # We load from existing and write to new, so just check that the new file contains the correct data
         contents = json.load(open(vault_file_new))
@@ -181,7 +187,7 @@ class TestLargeScaleVault:
         assert KeyringLargeScale.result in contents
 
     def test_get_multiple(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.FileTypes.JSON, varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.start_time,
@@ -200,7 +206,7 @@ class TestLargeScaleVault:
         assert len([key for key in keys if key not in vars]) == 0, f"Keys are missing in vars: {[key for key in keys if key not in vars]}"
 
     def test_get_via_vaulter(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.FileTypes.JSON, varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.cpus_per_container,
@@ -257,7 +263,7 @@ class TestLargeScaleVault:
     def test_get_threaded(self):
         # Note the use of varvault.VaultFlags.silent() here. It will speed up the processing significantly.
         # It brings processing down from 1.6 seconds to 0.16 seconds for 500 parallel requests.
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.VaultFlags.silent(), varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.FileTypes.JSON, varvault.VaultFlags.silent(), varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.cpus_per_container,
@@ -325,7 +331,7 @@ class TestLargeScaleVault:
             # It's fine, file probably doesn't exist
             pass
 
-        vault = varvault.from_vault(KeyringLargeScale, "vault", vault_file_new, varvault.VaultFlags.live_update(), varvault.VaultFlags.remove_existing_log_file())
+        vault = varvault.from_vault(KeyringLargeScale, "vault", vault_file_new, varvault.FileTypes.JSON, varvault.VaultFlags.live_update(), varvault.VaultFlags.remove_existing_log_file())
 
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,

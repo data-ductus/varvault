@@ -24,4 +24,4 @@ update-pip:
 
 .PHONY: test-vault
 test-vault:
-	pytest --tb=short --junitxml ./logs/test-vault-report.xml -vvv --full-trace -p no:cacheprovider --html=./logs/test-vault-report.html --self-contained-html tests/test_vault.py tests/test_large_scale_vault.py
+	pytest --tb=short --junitxml ./logs/test-vault-report.xml -vvv --full-trace -p no:cacheprovider --html=./logs/test-vault-report.html --self-contained-html tests/test_vault.py tests/test_large_scale_vault.py tests/test_xml_vault.py

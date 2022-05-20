@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import os
-import _io
 import abc
-import json
 import asyncio
 import logging
 import functools
@@ -17,6 +15,7 @@ from .keyring import Keyring, Key
 from .utils import concurrent_execution, md5hash, create_mini_vault_from_file, is_serializable
 from .vaultflags import VaultFlags
 from .logger import get_logger, configure_logger
+from .filehandlers import BaseFileHandler
 
 
 class VarVaultInterface(abc.ABC):
@@ -42,7 +41,8 @@ class VarVaultInterface(abc.ABC):
          {VaultFlags.permit_modifications},
          {VaultFlags.split_return_keys},
          {VaultFlags.return_key_can_be_missing},
-         {VaultFlags.clean_return_keys}
+         {VaultFlags.clean_return_keys},
+         {VaultFlags.no_error_logging}
         """
         pass
 
@@ -102,10 +102,13 @@ class VarVaultInterface(abc.ABC):
 
 class VarVault(VarVaultInterface):
     class Vault(dict):
-        def __init__(self, vault_file: TextIO = None):
+        def __init__(self, vault_file: str = None, varvault_filehandler_class: Type[BaseFileHandler] = None, file_is_read_only=False, live_update=False):
             super(VarVault.Vault, self).__init__()
             self.writable_args = dict()
-            self.vault_file = vault_file
+            self.file_is_read_only = file_is_read_only
+            self.live_update = live_update
+            if varvault_filehandler_class and vault_file:
+                self.filehandler = varvault_filehandler_class(vault_file)
 
         def __setitem__(self, key, value):
             data = {key: value}
@@ -132,14 +135,22 @@ class VarVault(VarVaultInterface):
             self.write()
 
         def write(self):
+            # If the vault file is set to read-only, don't write to it.
+            if self.file_is_read_only:
+                return
+
+            # No filehandler has been defined, which means we cannot write anything to the file
+            if not self.filehandler:
+                return
+
             # Try to write writable_args to vault_file if it has been defined
-            if self.vault_file:
-                json.dump(self.writable_args, open(self.vault_file.name, "w"), indent=2)
+            self.filehandler.write(self.writable_args)
 
     def __init__(self, varvault_keyring: Type[Keyring], varvault_vault_name: str,
                  *flags: VaultFlags,
                  varvault_vault_filename_from: str = None,
                  varvault_vault_filename_to: str = None,
+                 varvault_filehandler_class: Type[BaseFileHandler] = None,
                  varvault_specific_logger: logging.Logger = None,
                  **extra_keys):
         f"""
@@ -149,13 +160,16 @@ class VarVault(VarVaultInterface):
         :param varvault_vault_name: The name of the vault. This is used when creating a logfile for logging information to. 
         :param flags: A set of flags used to tweak the behavior of the vault object. See {VaultFlags} for what flags can be used and what they do.   
         :param varvault_vault_filename_from: Optional. The name of the file to load a vault from.  
-        :param varvault_vault_filename_to: Optional. The name of a JSON file to write data in the vault to.  
+        :param varvault_vault_filename_to: Optional. The name of a file to write data in the vault to.
+        :param varvault_filehandler_class: Optional argument to specify type of the file type used for the vault files.  
         :param varvault_specific_logger: Optional. A specific logger to log to in-case you do not want to use the built-in logger in varvault.  
         :param extra_keys: Optional. A kwargs-object with extra keys that are not defined in the {varvault_keyring}. This can be useful when you have a lot of keys that you might 
          want to handle in a programmatic sense rather than in a pre-defined sense. 
         """
         assert issubclass(varvault_keyring, Keyring), f"'keyring' must be a subclass of {Keyring}"
+        assert issubclass(varvault_filehandler_class, BaseFileHandler), f"'varvault_filehandler_class' must be of type {BaseFileHandler}"
         self.keyring_class = varvault_keyring
+        self.varvault_filehandler_class = varvault_filehandler_class
         self.flags: list = list(flags)
         disable_logger = VaultFlags.flag_is_set(VaultFlags.disable_logger(), *self.flags)
         remove_existing_log_file = VaultFlags.flag_is_set(VaultFlags.remove_existing_log_file(), *self.flags)
@@ -183,16 +197,12 @@ class VarVault(VarVaultInterface):
         self.vault_filename_from = varvault_vault_filename_from
         self.vault_filename_to = varvault_vault_filename_to
 
-        # Create the vault file object
-        self.vault_file = self._create_vault_file() if self.vault_filename_to and not self.file_is_read_only else None
-
+        # Create the inner vault
+        self.inner_vault = self.Vault(vault_file=self.vault_filename_to, varvault_filehandler_class=self.varvault_filehandler_class, file_is_read_only=self.file_is_read_only, live_update=self.live_update)
         self.vault_file_from_hash = self._get_vault_file_hash()
 
-        # Create the inner vault
-        self.inner_vault = self.Vault(self.vault_file)
-
-        if self.vault_file:
-            self.log(f"Vault writing data to '{self.vault_file.name}'", level=logging.INFO)
+        if self.inner_vault.filehandler.file:
+            self.log(f"Vault writing data to '{self.inner_vault.filehandler.file.name}'", level=logging.INFO)
         if self.live_update:
             self.log(f"Vault doing live updates from '{self.vault_filename_from}' whenever the vault is accessed.", level=logging.INFO)
 
@@ -205,11 +215,6 @@ class VarVault(VarVaultInterface):
 
         return key in self.vault
 
-    def __del__(self):
-        # Close database_file if it has been defined
-        if self.vault_file and isinstance(self.vault_file, _io.TextIOWrapper):
-            self.vault_file.close()
-
     def __str__(self):
         return self.inner_vault.__str__()
     
@@ -221,20 +226,6 @@ class VarVault(VarVaultInterface):
     @property
     def vault(self):
         return self.inner_vault
-
-    def _create_vault_file(self):
-        """Creates a database file if one has been defined for this vault"""
-        if not self.vault_filename_to:
-            return
-
-        dirs_path = os.path.dirname(self.vault_filename_to)
-        os.makedirs(dirs_path, exist_ok=True)
-
-        file = open(self.vault_filename_to, "w")
-        file.write(json.dumps(dict(), indent=2))
-        file.write("\n")
-        file.close()
-        return file
 
     # =========================================================================================================================================
     # vaulter
@@ -319,8 +310,10 @@ class VarVault(VarVaultInterface):
                     try:
                         ret = func(*args, **input_kwargs)
                     except Exception as e:
-                        self.log(f"Failed to run {func.__module__}.{func.__name__}: {e}", level=logging.ERROR)
-                        self.log(str(traceback.format_exc()).rstrip("\n"), level=logging.ERROR)
+                        if not VaultFlags.flag_is_set(VaultFlags.no_error_logging(), *all_flags):
+                            # Flag to not log error is NOT set, so we should log the error and then raise the error
+                            self.log(f"Failed to run {func.__module__}.{func.__name__}: {e}", level=logging.ERROR)
+                            self.log(str(traceback.format_exc()).rstrip("\n"), level=logging.ERROR)
                         raise
 
                     #
@@ -480,7 +473,7 @@ class VarVault(VarVaultInterface):
         assert key not in self or modifications_permitted, f"Key {key} already exists in the vault and modifications to existing variables are not permitted."
 
         # Validate the type of the value to insert into the vault
-        assert key.type_is_valid(value), f"Value of type {type(value)} is not permitted; Valid type: {key.valid_type}"
+        assert key.type_is_valid(value), f"Key '{key}' requires type to be '{key.valid_type}', but type for value is '{type(value)}'."
 
     # =======================================================================
     # get_multiple
@@ -501,7 +494,8 @@ class VarVault(VarVaultInterface):
             if not VaultFlags.flag_is_set(VaultFlags.input_key_can_be_missing(), *all_flags):
                 for key in keys:
                     assert key in self, f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. " \
-                                        f"You can set the flag '{VaultFlags.input_key_can_be_missing()}' to avoid this, in which case the value will be {None}, or make sure a value is mapped to it."
+                                        f"You can set the flag '{VaultFlags.input_key_can_be_missing()}' to avoid this, " \
+                                        f"in which case the value will be {None}, or make sure a value is mapped to it."
             [mini.update({key: self.vault.get(key)}) for key in keys]
             self._reset_log_levels()
         return mini
@@ -525,7 +519,8 @@ class VarVault(VarVaultInterface):
 
             if not VaultFlags.flag_is_set(VaultFlags.input_key_can_be_missing(), *all_flags):
                 assert key in self, f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. " \
-                                    f"You can set the flag '{VaultFlags.input_key_can_be_missing()}' to avoid this, in which case the value will be {None}, or make sure a value is mapped to it."
+                                    f"You can set the flag '{VaultFlags.input_key_can_be_missing()}' to avoid this, " \
+                                    f"in which case the value will be {None}, or make sure a value is mapped to it."
 
             self.log(f"Getting value for key {key} from vault")
             value = self.vault.get(key, default)
@@ -561,7 +556,7 @@ class VarVault(VarVaultInterface):
                                         f"figure out an appropriate solution for this problem. ")
 
             if current_hash != self.vault_file_from_hash:
-                mini = create_mini_vault_from_file(self.vault_filename_from, self.keyring_class)
+                mini = create_mini_vault_from_file(self.vault_filename_from, self.keyring_class, self.varvault_filehandler_class)
                 self.vault_file_from_hash = current_hash
                 self.vault.put(mini)
 

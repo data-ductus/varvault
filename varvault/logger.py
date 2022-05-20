@@ -4,7 +4,7 @@ import tempfile
 
 
 def get_logger(name, remove_existing_log_file=False):
-    """Returns a logger for name that logs to a specific file."""
+    f"""Returns a logger for {name} that logs to a specific file."""
 
     class CustomFormat(logging.Formatter):
         FORMATS = {logging.INFO: logging.PercentStyle(f'%(levelname)s - %(asctime)s %(name)s - %(message)s'),
@@ -60,7 +60,7 @@ def get_logger(name, remove_existing_log_file=False):
 
 
 def configure_logger(logger: logging.Logger, overall_level=logging.DEBUG, stream_level=logging.INFO, file_level=logging.DEBUG):
-    """Configures a logger by setting the logging levels for the different handlers."""
+    f"""Configures a {logger} by setting the logging levels for the different handlers."""
     logger.setLevel(overall_level)
 
     for handler in logger.handlers:
