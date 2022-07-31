@@ -180,7 +180,6 @@ class VarVault(object):
 
         def wrap_outer(func):
             func_module_name = f"{func.__module__}.{func.__name__}"
-            print(func_module_name)
 
             def pre_call(**kwargs):
                 self._try_reload_from_file()
