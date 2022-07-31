@@ -1,19 +1,7 @@
 import json
-import os
-import sys
 import time
 
-import logging
-
-DIR = os.path.dirname(os.path.realpath(__file__))
-path = f"{os.path.dirname(DIR)}"
-temp_path = [path]
-temp_path.extend(sys.path)
-sys.path = temp_path
-
-import varvault
-
-logger = logging.getLogger("pytest")
+from commons import *
 
 vault_file_new = f"{DIR}/new-vault.json"
 large_vault_file = f"{DIR}/large-scale-existing-vault.json"
@@ -82,10 +70,6 @@ class KeyringLargeScale(varvault.Keyring):
     grafana_port = varvault.Key("grafana_port", valid_type=str)
     grafana_credentials = varvault.Key("grafana_credentials", valid_type=str)
     grafana_auth_token = varvault.Key("grafana_auth_token", valid_type=str)
-    ned_id_cisco_staros = varvault.Key("ned_id_cisco_staros", valid_type=str)
-    ned_id_cisco_pnr_rest = varvault.Key("ned_id_cisco_pnr_rest", valid_type=str)
-    ned_id_openstack_cos = varvault.Key("ned_id_openstack_cos", valid_type=str)
-    ned_id_etsi_sol003 = varvault.Key("ned_id_etsi_sol003", valid_type=str)
     result = varvault.Key("result", valid_type=ResultDict)
     result_to_upload = varvault.Key("result_to_upload", valid_type=ResultToUploadDict)
     installer_local = varvault.Key("installer_local", valid_type=str)
@@ -135,7 +119,7 @@ class TestLargeScaleVault:
             pass
 
     def test_load_from_large_vault(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.FileTypes.JSON, varvault.VaultFlags.remove_existing_log_file(), varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonFilehandler(large_vault_file), varvault.VaultFlags.remove_existing_log_file(), varvault.VaultFlags.remove_existing_log_file(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
         logger.info("Created the vault from file")
         # We load from existing and write to new, so just check that the new file contains the correct data
         contents = json.load(open(vault_file_new))
@@ -149,10 +133,6 @@ class TestLargeScaleVault:
         assert KeyringLargeScale.log_out_dir in contents
         assert KeyringLargeScale.hostsfile_path in contents
         assert KeyringLargeScale.grafana_port in contents
-        assert KeyringLargeScale.ned_id_cisco_staros in contents
-        assert KeyringLargeScale.ned_id_cisco_pnr_rest in contents
-        assert KeyringLargeScale.ned_id_etsi_sol003 in contents
-        assert KeyringLargeScale.ned_id_openstack_cos in contents
         assert KeyringLargeScale.influxdb_database in contents
         assert KeyringLargeScale.installer_local_pre_upgrade in contents
         assert KeyringLargeScale.installer_local_post_upgrade in contents
@@ -187,7 +167,7 @@ class TestLargeScaleVault:
         assert KeyringLargeScale.result in contents
 
     def test_get_multiple(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.FileTypes.JSON, varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonFilehandler(large_vault_file), varvault.VaultFlags.remove_existing_log_file(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.start_time,
@@ -206,7 +186,7 @@ class TestLargeScaleVault:
         assert len([key for key in keys if key not in vars]) == 0, f"Keys are missing in vars: {[key for key in keys if key not in vars]}"
 
     def test_get_via_vaulter(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.FileTypes.JSON, varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonFilehandler(large_vault_file), varvault.VaultFlags.remove_existing_log_file(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.cpus_per_container,
@@ -217,10 +197,6 @@ class TestLargeScaleVault:
                 KeyringLargeScale.log_out_dir,
                 KeyringLargeScale.hostsfile_path,
                 KeyringLargeScale.grafana_port,
-                KeyringLargeScale.ned_id_cisco_staros,
-                KeyringLargeScale.ned_id_cisco_pnr_rest,
-                KeyringLargeScale.ned_id_etsi_sol003,
-                KeyringLargeScale.ned_id_openstack_cos,
                 KeyringLargeScale.influxdb_database,
                 KeyringLargeScale.installer_local_pre_upgrade,
                 KeyringLargeScale.installer_local_post_upgrade,
@@ -263,7 +239,7 @@ class TestLargeScaleVault:
     def test_get_threaded(self):
         # Note the use of varvault.VaultFlags.silent() here. It will speed up the processing significantly.
         # It brings processing down from 1.6 seconds to 0.16 seconds for 500 parallel requests.
-        vault = varvault.from_vault(KeyringLargeScale, "vault", large_vault_file, varvault.FileTypes.JSON, varvault.VaultFlags.silent(), varvault.VaultFlags.remove_existing_log_file(), varvault_vault_filename_to=vault_file_new)
+        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonFilehandler(large_vault_file), varvault.VaultFlags.silent(), varvault.VaultFlags.remove_existing_log_file(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.cpus_per_container,
@@ -274,10 +250,6 @@ class TestLargeScaleVault:
                 KeyringLargeScale.log_out_dir,
                 KeyringLargeScale.hostsfile_path,
                 KeyringLargeScale.grafana_port,
-                KeyringLargeScale.ned_id_cisco_staros,
-                KeyringLargeScale.ned_id_cisco_pnr_rest,
-                KeyringLargeScale.ned_id_etsi_sol003,
-                KeyringLargeScale.ned_id_openstack_cos,
                 KeyringLargeScale.influxdb_database,
                 KeyringLargeScale.installer_local_pre_upgrade,
                 KeyringLargeScale.installer_local_post_upgrade,
@@ -325,13 +297,7 @@ class TestLargeScaleVault:
         logger.info(f"Time (seconds): {time.time() - start}")
 
     def test_live_update(self):
-        try:
-            os.remove(vault_file_new)
-        except OSError:
-            # It's fine, file probably doesn't exist
-            pass
-
-        vault = varvault.from_vault(KeyringLargeScale, "vault", vault_file_new, varvault.FileTypes.JSON, varvault.VaultFlags.live_update(), varvault.VaultFlags.remove_existing_log_file())
+        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonFilehandler(vault_file_new, live_update=True), varvault.VaultFlags.live_update(), varvault.VaultFlags.remove_existing_log_file())
 
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
@@ -343,10 +309,6 @@ class TestLargeScaleVault:
                 KeyringLargeScale.log_out_dir,
                 KeyringLargeScale.hostsfile_path,
                 KeyringLargeScale.grafana_port,
-                KeyringLargeScale.ned_id_cisco_staros,
-                KeyringLargeScale.ned_id_cisco_pnr_rest,
-                KeyringLargeScale.ned_id_etsi_sol003,
-                KeyringLargeScale.ned_id_openstack_cos,
                 KeyringLargeScale.influxdb_database,
                 KeyringLargeScale.installer_local_pre_upgrade,
                 KeyringLargeScale.installer_local_post_upgrade,
@@ -383,7 +345,7 @@ class TestLargeScaleVault:
 
         # Load the existing vault file and write the contents to the temporary file
         contents = json.load(open(large_vault_file))
-        json.dump(contents, open(vault_file_new, "w"))
+        json.dump(contents, open(vault_file_new, "w"), indent=2)
 
         # Since we use live update, the contents of the existing vault file should now be loaded into the vault.
         @vault.vaulter(input_keys=keys)

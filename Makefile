@@ -15,13 +15,14 @@ build: clean
 	@tar tzf dist/varvault-*.tar.gz
 
 .PHONY: upload
-upload: test-vault dependencies build
+upload: test dependencies build
 	@python3 -m twine upload dist/*
 
 .PHONY: update-pip
 update-pip:
 	@python3 -m pip install -r requirements.txt
 
-.PHONY: test-vault
-test-vault:
-	pytest --tb=short --junitxml ./logs/test-vault-report.xml -vvv --full-trace -p no:cacheprovider --html=./logs/test-vault-report.html --self-contained-html tests/test_vault.py tests/test_large_scale_vault.py tests/test_xml_vault.py
+.PHONY: test
+test:
+	pytest --tb=short --junitxml ./logs/test-report.xml -vvv --full-trace -p no:cacheprovider --html=./logs/test-report.html --self-contained-html $(shell ls tests/test_*.py)
+

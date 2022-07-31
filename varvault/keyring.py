@@ -1,58 +1,8 @@
 from __future__ import annotations
 
-import re
-import functools
-import inspect
-import warnings
-
 from typing import *
 
-
-def validator(function_asserts: bool = None, function_returns_bool: bool = None, skip_source_assertions: bool = False) -> Callable:
-    f"""
-    Decorator that is used to register a function as a validator-function used for varvault-keys.
-    A validator-function assigned to a key will be executed based on how it's registered.
-    
-    If no argument is passed to the function, {function_asserts} will be set to {True}.
-
-    :param function_asserts: Used to tell varvault that the function will do the validation by performing an assert
-    :param function_returns_bool: Used to tell varvault that the function will return a boolean that varvault will assert to be True.
-    :param skip_source_assertions: Used to tell this decorator to skip source-assertions that verify that assert or return is done in the  .  
-    """
-    assert isinstance(function_asserts, bool) or function_asserts is None, f"'function_asserts' must be a bool, or {None}"
-    assert isinstance(function_returns_bool, bool) or function_returns_bool is None, f"'function_returns_bool' must be a bool, or {None}"
-    if function_asserts and function_returns_bool:
-        raise SyntaxError("You've set both 'function_asserts' and 'function_returns_bool' to True; 'function_asserts' takes precedence. Is this what you really want?")
-    if not function_asserts and not function_returns_bool:
-        function_asserts = True
-
-    def wrap_outer(func: Callable) -> Callable:
-
-        assert callable(func), f"Object {func} is not a callable"
-        argspecs = inspect.getfullargspec(func)
-
-        assert len(argspecs.args) == 1, f"You've defined more arguments (or no arguments) for the validator function than you are allowed to. There must be exactly one argument defined in the signature."
-
-        source = inspect.getsource(func)
-        if function_asserts:
-            assert re.findall(re.compile(r".*assert .*"), source) or skip_source_assertions, "No assert-statement found in the functions source. That doesn't seem right if you are planning to do an assert in the function."
-        elif function_returns_bool:
-            if argspecs.annotations.get("return") != bool:
-                warnings.warn("If you define the validator-function to say that it returns a bool, you should really also annotate the function to say it returns a bool.", SyntaxWarning)
-            assert re.findall(re.compile(r".*return .*"), source) or skip_source_assertions, "No return-statement found in the functions source. That doesn't seem right if you are planning to return a bool that varvault is meant to assert."
-
-        @functools.wraps(func)
-        def wrap_inner(keyvalue: object):
-            assert callable(func)
-            if function_asserts:
-                func(keyvalue)
-            elif function_returns_bool:
-                ret = func(keyvalue)
-                assert isinstance(ret, bool), f"The return value is of type {type(ret)}, not of type {bool}, " \
-                                              f"and you have said that the function will return a bool through 'function_returns_bool' being set to {True}"
-                assert ret is True, f"The validator-function {func.__name__} returned False for key-value: {keyvalue}"
-        return wrap_inner
-    return wrap_outer
+from .validator import validator
 
 
 class Key(str):
@@ -87,10 +37,10 @@ class Key(str):
 
     @classmethod
     def _convert_validators_to_tuple(cls, validators):
-        assert validators is None or callable(validators) or isinstance(validators, (list, tuple))
+        assert validators is None or callable(validators) or isinstance(validators, (list, tuple)), f"Validators {validators} should be {None}, {Callable}, or a {list}/{tuple} of {Callable}"
         if isinstance(validators, (list, tuple)):
             for validator_function in validators:
-                assert callable(validator_function)
+                assert callable(validator_function), f"Validator must be a {Callable}"
         if validators is None:
             return tuple()
         if callable(validators):
@@ -98,7 +48,9 @@ class Key(str):
         return tuple(validators)
 
     def type_is_valid(self, obj):
+        """Checks if the type/value for an object mapped to this key is valid in accordance with the definition of the key."""
         def run_validators():
+            f"""Runs the validators. Note that all validators are decorated with the {validator} decorator which is responsible for handling the actual validation."""
             for validator_function in self.validators:
                 validator_function(obj)
 
@@ -133,7 +85,9 @@ class Key(str):
 
 class Keyring(object):
     """Base class for keys to be used for a vault. A class which extends
-    this class must be used for defining your own keyring."""
+    this class must be used for defining your own keyring.
+
+    Note that you never have to instantiate this class (i.e. create an object), you just have to create a class that inherits from this class."""
 
     @classmethod
     def get_keys_in_keyring(cls) -> Dict[str, Key]:

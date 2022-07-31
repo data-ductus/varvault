@@ -14,10 +14,9 @@ class MiniVault(dict):
 
     @staticmethod
     def build(keys: List[Key] or Tuple[Key], values: List[Any] or Tuple[Any]):
-        f"""Builds a {MiniVault}-object based on iterables of {keys} and {values}. Note that if more values are passed to the function than keys,
-        the indices for the values that exceed the length of the keys will be ignored."""
-        assert isinstance(keys, (list, tuple)), "'keys' must be a list or a tuple"
-        assert isinstance(values, (list, tuple)), "'values' must be a list or a tuple"
+        f"""Builds a {MiniVault}-object based on iterables of {keys} and {values}. Note that the number of {keys} and the number of {values} must be identical"""
+        assert isinstance(keys, (list, tuple)), f"'keys' must be a list or a tuple, not {type(keys)}"
+        assert isinstance(values, (list, tuple)), f"'values' must be a list or a tuple, not {type(values)}"
 
         assert len(keys) == len(values), "The length of 'keys' and 'values' must be identical"
 
@@ -29,6 +28,7 @@ class MiniVault(dict):
             assert key.type_is_valid(value), f"Key '{key}' requires type to be '{key.valid_type}', but type for value is '{type(value)}'. " \
                                              f"Is the order of your keys and values passed to '{MiniVault.build.__name__}' wrong?"
             data[key] = value
+
         return MiniVault(data)
 
     def add(self, k, v):

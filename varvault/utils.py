@@ -1,7 +1,4 @@
-import json
 import asyncio
-import hashlib
-import logging
 from types import *
 from typing import *
 
@@ -9,26 +6,6 @@ from .keyring import Keyring, Key
 from .minivault import MiniVault
 from .vaultstructs import VaultStructBase
 from .filehandlers import BaseFileHandler
-
-
-def md5hash(fname):
-    """Get md5 hash of a file using hashlib"""
-    hash_md5 = hashlib.md5()
-    with open(fname, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-
-def is_serializable(obj: object, logger: logging.Logger = None):
-    f"""Function for testing whether or not an object can be serialized by simply trying to do {json.dumps} on the object. Returns {True} if {obj} can be serialized, otherwise {False}."""
-    try:
-        json.dumps(obj)
-        return True
-    except (TypeError, OverflowError) as e:
-        if logger:
-            logger.debug(f"Failed to serialize object: {e}")
-        return False
 
 
 def concurrently(*args_as_iterable: Union[Sized, Iterable], **input_kwargs):
@@ -114,16 +91,15 @@ def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inpu
     return asyncio.run(do(target, *inputs, **kwargs))
 
 
-def create_mini_vault_from_file(varvault_filename_from: str, varvault_keyring: Type[Keyring], varvault_filehandler_class: Type[BaseFileHandler], varvault_live_update=False, varvault_file_is_read_only=False, **extra_keys) -> MiniVault:
-    f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the {varvault_filehandler_class} passed."""
-
-    assert issubclass(varvault_keyring, Keyring)
-    filehandler = varvault_filehandler_class(varvault_filename_from, varvault_live_update, varvault_file_is_read_only)
-    vault_file_data = filehandler.read()
+def create_mini_vault_from_file(varvault_filehandler_from: BaseFileHandler, varvault_keyring: Type[Keyring], **extra_keys) -> MiniVault:
+    f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the {varvault_filehandler_from} passed."""
+    assert isinstance(varvault_filehandler_from, BaseFileHandler), f"'varvault_filehandler_from' must be an instance of {BaseFileHandler}, not {type(varvault_filehandler_from)}"
+    assert issubclass(varvault_keyring, Keyring), f"'varvault_keyring' must be a subclass of {Keyring}, not {varvault_keyring} ({type(varvault_keyring)})"
+    vault_file_data = varvault_filehandler_from.read()
 
     assert isinstance(vault_file_data, dict)
 
-    # Get the keys from the file as a list.
+    # Get the keys from the keyring as a list.
     keys_from_keyring = varvault_keyring.get_keys_in_keyring()
     keys_from_keyring.update(extra_keys)
     return_vault_data = dict()

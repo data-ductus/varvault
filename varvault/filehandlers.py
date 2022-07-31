@@ -1,70 +1,82 @@
+import os
 import abc
-import json
-import os.path
-import threading
 import warnings
+import threading
 
-from typing import Union, Dict, List, TextIO
+from typing import Union, Dict, Any, AnyStr
 
 
 class BaseFileHandler(abc.ABC):
-    def __init__(self, filename: str, live_update=False, file_is_read_only=False):
+    def __init__(self, path: Union[AnyStr, Any], live_update=False, vault_is_read_only=False):
         self.lock = threading.Lock()
-        self.raw_filename = filename
+        self.raw_path = path
         self.live_update = live_update
-        self.file_is_read_only = file_is_read_only
-        self.file = filename
+        self.vault_is_read_only = vault_is_read_only
+        self.create_resource(path)
 
     @property
-    def file(self) -> TextIO:
-        return self.file_io
+    @abc.abstractmethod
+    def resource(self) -> Any:
+        """Meant to return the resource that stores the vault in some database."""
+        raise NotImplementedError()
 
-    @file.setter
-    def file(self, filename: str):
+    @abc.abstractmethod
+    def create_resource(self, path: Union[AnyStr, Any]):
+        """Meant to create the resource to store the vault in a database."""
+        raise NotImplementedError()
 
-        if filename and self.live_update and not os.path.exists(filename):
-            self.file_io = None
-            raise FileNotFoundError("Unable to find the file and live-update is defined. This is fine, but we need to raise the error and handle it.")
-        elif filename and not os.path.exists(filename):
-            # Create the file; It doesn't exist
-            self.file_io = open(filename, "w")
-            self.file_io.close()
-        elif filename and os.path.exists(filename):
-            # The file already exists; Just read from it
-            self.file_io = open(filename)
-            self.file_io.close()
-        else:
-            raise NotImplementedError("This is not supported")
+    @property
+    @abc.abstractmethod
+    def path(self) -> Union[AnyStr, Any]:
+        """Meant to return the path to the database that stores the vault."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def kv_pair_can_be_written(self, obj: Dict) -> bool:
+        """Meant to return a bool that says if a given key-value pair can be successfully written to the database."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def hash(self) -> str:
+        """Meant to return a hash for the database so varvault knows if the vault that is loaded in memory is different from the vault in the file/database."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def exists(self) -> bool:
+        """Meant to return a bool which says if the resource exists or not"""
+        raise NotImplementedError()
 
     # ================================================================================================================
     # Write
     # ================================================================================================================
-    def write(self, vault: dict):
-        if self.file_is_read_only:
+    def write(self, vault: dict) -> None:
+        f"""Writes the vault to the database by calling the implemented '{self.do_write}' function."""
+        if self.vault_is_read_only:
             warnings.warn("Tried to write to a vault-file defined as read-only. This is not permitted by varvault.")
-        if self.file:
+        if self.resource:
             with self.lock:
                 self.do_write(vault)
 
     @abc.abstractmethod
-    def do_write(self, vault: dict):
+    def do_write(self, vault: dict) -> None:
         """
-        A function to write data to a file. Varvault will call this function internally.
-        The class that implements this abstractmethod has to write a dict to a file and then close the file.
+        A function to write a vault to a file/database. Varvault will call this function internally.
+        The class that implements this abstract method has to write a dict to a resource.
 
         Example:
-        `json.dump(vault, open(self.file.name, "w"), indent=2)`
+        `json.dump(vault, open(self.path, "w"), indent=2)`
 
         :param vault: The vault to write to the file.
         :return: None. Varvault will not use the return value from this function
         """
-        pass
+        raise NotImplementedError()
 
     # ================================================================================================================
     # Read
     # ================================================================================================================
     def read(self) -> Dict:
-        if self.file:
+        f"""Reads the vault from the database by calling the implemented '{self.do_read}' function."""
+        if self.resource:
             with self.lock:
                 try:
                     return self.do_read()
@@ -74,27 +86,37 @@ class BaseFileHandler(abc.ABC):
                         # the file must be considered okay as the file might not exist yet.
                         return {}
                     raise e
+        elif not self.resource and self.live_update:
+            try:
+                self.create_resource(self.path)
+                with self.lock:
+                    return self.do_read()
+            except (FileNotFoundError, ResourceNotFoundError):
+                return {}
+        raise ResourceNotFoundError("Tried to read from the resource but the resource isn't created correctly and live-update isn't defined", self)
 
     @abc.abstractmethod
     def do_read(self) -> Dict:
         """
-        A function to read data from a file. Varvault will call this function internally.
+        A function to read data from a file/database. Varvault will call this function internally.
         The class that implements this abstractmethod has to read data from a file and then return it.
 
         Example:
-        `return json.load(open(self.file.name))`
+        `return json.load(open(self.path))`
 
         :return: A dict describing the vault from the file.
         """
-        pass
+        raise NotImplementedError()
+
+    def __str__(self):
+        return f"resource={self.resource}; path={self.path}; live_update={self.live_update}; vault_is_read_only={self.vault_is_read_only}"
 
 
-class JsonFilehandler(BaseFileHandler):
-    def __init__(self, filename: str, live_update=False, file_is_read_only=False):
-        super(JsonFilehandler, self).__init__(filename, live_update, file_is_read_only)
+class ResourceNotFoundError(FileNotFoundError):
+    def __init__(self, msg, filehandler: BaseFileHandler):
+        super(ResourceNotFoundError, self).__init__(msg)
+        self.msg = msg
+        self.filehandler = filehandler
 
-    def do_write(self, vault: dict):
-        json.dump(vault, open(self.file.name, "w"), indent=2)
-
-    def do_read(self) -> Union[Dict, List]:
-        return json.load(open(self.file.name))
+    def __str__(self):
+        return f"{self.msg} - {self.filehandler}"

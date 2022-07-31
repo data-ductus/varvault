@@ -1,39 +1,70 @@
-import os
-from typing import Union, Dict, List
+from typing import Union, Dict, List, AnyStr, Any, TextIO
 
-import sys
-import logging
 import tempfile
 import xmltodict
 
-import varvault
-from varvault import BaseFileHandler
+from commons import *
 
 
-DIR = os.path.dirname(os.path.realpath(__file__))
-path = f"{os.path.dirname(DIR)}"
-temp_path = [path]
-temp_path.extend(sys.path)
-sys.path = temp_path
-
-logger = logging.getLogger("pytest")
 vault_file_new = f"{DIR}/new-vault.xml"
 existing_vault = f"{DIR}/existing-vault.xml"
 
 
-class XmlFileHandler(BaseFileHandler):
+class XmlFileHandler(varvault.BaseFileHandler):
     KEY = "VAULT"
 
-    def __init__(self, filename: str, live_update=False, file_is_read_only=False):
-        super(XmlFileHandler, self).__init__(filename, live_update, file_is_read_only)
+    def __init__(self, path: str, live_update=False, file_is_read_only=False):
+        super(XmlFileHandler, self).__init__(path, live_update, file_is_read_only)
+
+    @property
+    def resource(self) -> TextIO:
+        return self.file_io
+
+    def create_resource(self, path: Union[AnyStr, Any]) -> None:
+        if path and self.live_update and not os.path.exists(path):
+            self.file_io = None
+        elif path and not os.path.exists(path):
+            # Create the file; It doesn't exist. Try to create the folder first.
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            self.file_io = open(path, "w")
+            self.file_io.close()
+        elif path and os.path.exists(path):
+            # The file already exists; Just read from it
+            self.file_io = open(path)
+            self.file_io.close()
+        else:
+            raise NotImplementedError("This is not supported")
+
+    @property
+    def path(self) -> Union[AnyStr, Any]:
+        return self.raw_path
+
+    def kv_pair_can_be_written(self, obj: Dict) -> bool:
+        obj = {self.KEY: obj}
+        try:
+            xmltodict.unparse(obj, pretty=True)
+            return True
+        except:
+            return False
+
+    def hash(self):
+        import hashlib
+        hash_md5 = hashlib.md5()
+        with open(self.path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+
+    def exists(self) -> bool:
+        return os.path.exists(self.path)
 
     def do_write(self, vault: dict):
         # An XML file must have exactly one root. We assign the vault to the root self.KEY
         vault = {self.KEY: vault}
-        xmltodict.unparse(vault, open(self.file.name, "w"), pretty=True)
+        xmltodict.unparse(vault, open(self.path, "w"), pretty=True)
 
     def do_read(self) -> Union[Dict, List]:
-        vault = xmltodict.parse(open(self.file.name, "rb"))
+        vault = xmltodict.parse(open(self.path, "rb"))
         return vault[self.KEY]
 
 
@@ -57,7 +88,7 @@ class TestXmlVault:
             pass
 
     def test_create_xml_vault(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_vault_filename_to=vault_file_new, varvault_filehandler_class=XmlFileHandler)
+        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=XmlFileHandler(vault_file_new))
 
         @vault.vaulter(return_keys=(Keyring.string_value, Keyring.int_value, Keyring.list_value))
         def _set():
@@ -73,7 +104,7 @@ class TestXmlVault:
         assert Keyring.list_value in data_in_file
 
     def test_read_from_xml_vault(self):
-        vault = varvault.from_vault(Keyring, "vault-from", existing_vault, XmlFileHandler, varvault.VaultFlags.file_is_read_only())
+        vault = varvault.from_vault(Keyring, "vault-from", XmlFileHandler(existing_vault), varvault.VaultFlags.vault_is_read_only())
 
         @vault.vaulter(input_keys=(Keyring.string_value, Keyring.int_value))
         def _get(string_value=None, int_value=None):

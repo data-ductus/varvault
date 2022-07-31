@@ -1,9 +1,17 @@
 # README
 
-## How to install?
+## TL;DR
+### Introduction
+A Python library for storing and using variables from a Python process in a global context and saving the variables to a file for being reused and/or debugging.  
+
+### Install
 ```
 pip3 install varvault
 ```
+
+### Contact
+calle.holst@dataductus.se
+
 
 ## What is this? 
 This is a package that allows you to create a key-value vault for storing variables in a global context. It allows 
@@ -20,7 +28,7 @@ The decorator takes some arguments that defines certain keys.
 
 ### How about an example?
 The best examples can be found in the test suites which can give a very good idea how it works and is guaranteed to be up-to-date. 
-```
+```python
 import varvault
 
 
@@ -29,7 +37,7 @@ class Keyring(varvault.Keyring):
     arg2 = varvault.Key("arg2")
 
 
-vault = varvault.create_vault(Keyring, "example-vault", varvault.VaultFlags.return_values_cannot_be_none(), varvault_vault_filename_to="~/.vault/vault.json", varvault_filehandler_class=varvault.FileTypes.JSON))
+vault = varvault.create_vault(Keyring, "example-vault", varvault.VaultFlags.return_values_cannot_be_none(), varvault_filehandler_to=varvault.JsonFilehandler("~/.vault/vault.json"))
 
 
 @vault.vaulter(return_keys=[Keyring.arg1, Keyring.arg2])
@@ -69,8 +77,9 @@ if __name__ == "__main__":
    allowing for existing key-value pairs to be modified (this is not allowed by default), allowing return variables from
    functions defined with return keys to be None, and setting a flag to write some additional debug logs.
    You can also define a .JSON file to be used as a vault file to store all the arguments in. 
-   In this example, we use the provided file-handler `JsonFileHandler` (which is assigned to `varvault.FileTypes.JSON` internally), 
-   but it's also possible to provide a custom file-handler object if you want to create your own file type.  
+   In this example, we use the provided file-handler `JsonFilehandler`, 
+   but it's also possible to provide a custom file-handler object if you want to create your own file type, 
+   or even attach it to something like a database running in a docker-container.  
 
 4. We create a function called `create_args` that takes some arguments (we have to insert variables
    into the vault somehow, right?) that we annotate with the vault decorator. We pass an argument to the
@@ -117,12 +126,14 @@ if __name__ == "__main__":
    ```
 9. When a file such as this (see above) exists, it's very possible to re-create the same vault again from this file. 
    In order to re-create the same vault again simply do this: 
-   ```
-   vault = varvault.from_vault_file(Keyring,
-                                    "example-vault",
-                                    "~/.vault/vault.json",
-                                    varvault.FileTypes.JSON,
-                                    varvault.VaultFlags.permit_modifications()))
+   ```python
+   import varvault
+   
+      
+   vault = varvault.from_vault(Keyring,
+                               "example-vault",
+                               varvault.JsonFilehandler("~/.vault/vault.json"),
+                               varvault.VaultFlags.permit_modifications())
    ```
    When re-creating a vault from an existing file it's recommended to allow modifications 
    (see `varvault.VaultFlags.permit_modifications`) in-case you are planning to write the same
