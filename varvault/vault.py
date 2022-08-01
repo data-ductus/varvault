@@ -285,7 +285,11 @@ class VarVault(object):
 
     def _vaulter__build_input_var_keys(self, input_keys, kwargs, *flags):
         mini = self.get_multiple(input_keys, *flags)
-        assert len(input_keys) == len(mini)
+
+        assert len(input_keys) == len(mini) or VaultFlags.flag_is_set(VaultFlags.input_key_can_be_missing(), *flags), \
+            f"The number of items acquired from {self.get_multiple.__name__} is not the same as the number of input-keys to the method, " \
+            f"and {VaultFlags.input_key_can_be_missing()} is not set. This is probably a bug."
+
         for key, value in mini.items():
             assert key not in kwargs, f"Key {key} seems to already exist in kwargs used for the function decorated with '@{self.vaulter.__name__}'"
 

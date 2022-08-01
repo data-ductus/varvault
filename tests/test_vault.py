@@ -482,7 +482,7 @@ class TestVault:
         assert Keyring.key_valid_type_is_int not in vault
         try:
             v = vault.get(Keyring.key_valid_type_is_int, default=1)
-            pytest.fail(f"Managed to get value from vault with default set, without configuring {varvault.VaultFlags.input_key_can_be_missing()}")
+            pytest.fail(f"Managed to get value from vault with default set, without configuring {varvault.VaultFlags.input_key_can_be_missing()}: {v}")
         except Exception as e:
             pass
 
@@ -494,3 +494,28 @@ class TestVault:
 
         v = vault.get(Keyring.key_valid_type_is_int, varvault.VaultFlags.input_key_can_be_missing()) or 2
         assert v == 2
+
+    def test_get_multiple_with_input_key_can_be_missing_flag(self):
+        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+
+        vault.insert(Keyring.key_valid_type_is_str, "valid")
+
+        assert Keyring.key_valid_type_is_int not in vault
+
+        @vault.vaulter(input_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        def noflag(**kwargs):
+            pass
+
+        try:
+            noflag()
+            pytest.fail(f"We managed to get this far, which shouldn't be possible: {vault}")
+        except:
+            pass
+
+        @vault.vaulter(varvault.VaultFlags.input_key_can_be_missing(), input_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        def withflag(key_valid_type_is_str: str = None, key_valid_type_is_int: int = None):
+            key_valid_type_is_int = key_valid_type_is_int or 1
+            assert key_valid_type_is_str == "valid"
+            assert key_valid_type_is_int == 1, f"'key_valid_type_is_int' was not {None} when it came into the function: {key_valid_type_is_int}"
+
+        withflag()
