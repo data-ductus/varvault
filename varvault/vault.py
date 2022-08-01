@@ -437,7 +437,7 @@ class VarVault(object):
                     assert key in self, f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. " \
                                         f"You can set the flag '{VaultFlags.input_key_can_be_missing()}' to avoid this, " \
                                         f"in which case the value will be {None}, or make sure a value is mapped to it."
-            [mini.update({key: self.vault.get(key)}) for key in keys]
+            [mini.update({key: self.vault.get(key)}) for key in keys if key in self]
             self._reset_log_levels()
         return mini
 

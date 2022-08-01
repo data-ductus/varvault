@@ -474,3 +474,23 @@ class TestVault:
         vault.insert(Keyring.key_valid_type_is_int, 1)
         data = json.load(open(vault_file))
         assert Keyring.key_valid_type_is_str in data and Keyring.key_valid_type_is_int in data
+
+    def test_get_with_default(self):
+        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+
+        vault.insert(Keyring.key_valid_type_is_str, "valid")
+        assert Keyring.key_valid_type_is_int not in vault
+        try:
+            v = vault.get(Keyring.key_valid_type_is_int, default=1)
+            pytest.fail(f"Managed to get value from vault with default set, without configuring {varvault.VaultFlags.input_key_can_be_missing()}")
+        except Exception as e:
+            pass
+
+        v = vault.get(Keyring.key_valid_type_is_int, varvault.VaultFlags.input_key_can_be_missing())
+        assert v is None
+
+        v = vault.get(Keyring.key_valid_type_is_int, varvault.VaultFlags.input_key_can_be_missing(), default=1)
+        assert v == 1
+
+        v = vault.get(Keyring.key_valid_type_is_int, varvault.VaultFlags.input_key_can_be_missing()) or 2
+        assert v == 2
