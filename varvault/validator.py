@@ -41,7 +41,7 @@ def validator(function_asserts: bool = None, function_returns_bool: bool = None,
 
         @functools.wraps(func)
         def wrap_inner(keyvalue: object):
-            assert callable(func)
+            assert callable(func), f"Function {func} is not a callable"
             if function_asserts:
                 func(keyvalue)
             elif function_returns_bool:

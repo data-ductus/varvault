@@ -186,7 +186,7 @@ class VarVault(object):
                 input_kwargs = self._vaulter__build_input_var_keys(input_keys, kwargs, *all_flags)
                 kwargs.update(input_kwargs)
                 self._configure_log_levels_based_on_flags(*all_flags)
-                assert callable(func)
+                assert callable(func), f"Function {func} is not a callable"
 
                 self.log(f"======{'=' * len(func_module_name)}=")
                 self.log(f">>>>> {func_module_name}:")

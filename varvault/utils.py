@@ -97,7 +97,7 @@ def create_mini_vault_from_file(varvault_filehandler_from: BaseFileHandler, varv
     assert issubclass(varvault_keyring, Keyring), f"'varvault_keyring' must be a subclass of {Keyring}, not {varvault_keyring} ({type(varvault_keyring)})"
     vault_file_data = varvault_filehandler_from.read()
 
-    assert isinstance(vault_file_data, dict)
+    assert isinstance(vault_file_data, dict), f"'vault_file_data' from the filehandler is not a dict: {vault_file_data}"
 
     # Get the keys from the keyring as a list.
     keys_from_keyring = varvault_keyring.get_keys_in_keyring()
