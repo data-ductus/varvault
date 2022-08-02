@@ -92,7 +92,7 @@ class JsonFilehandler(BaseFileHandler):
 
     def exists(self) -> bool:
         """Returns a bool that determines if the JSON file exists by expanding user and potential vars"""
-        return os.path.exists(os.path.expanduser(os.path.expandvars(self.path)))
+        return os.path.exists(self.path)
 
     def do_write(self, vault: dict) -> None:
         """Writes the vault to the JSON file"""
