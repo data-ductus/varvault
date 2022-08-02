@@ -91,8 +91,8 @@ class JsonFilehandler(BaseFileHandler):
         return hash_md5.hexdigest()
 
     def exists(self) -> bool:
-        """Returns a bool that determines if the JSON file exists"""
-        return os.path.exists(self.path)
+        """Returns a bool that determines if the JSON file exists by expanding user and potential vars"""
+        return os.path.exists(os.path.expanduser(os.path.expandvars(self.path)))
 
     def do_write(self, vault: dict) -> None:
         """Writes the vault to the JSON file"""
