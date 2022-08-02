@@ -519,3 +519,34 @@ class TestVault:
             assert key_valid_type_is_int == 1, f"'key_valid_type_is_int' was not {None} when it came into the function: {key_valid_type_is_int}"
 
         withflag()
+
+    def test_filehandler_exists(self):
+        dir = "~/.varvault-test-dir"
+        dir_expanded = os.path.expanduser(dir)
+        file = "~/.varvault-test-dir/vault.json"
+        file_expanded = os.path.expanduser(file)
+        try:
+            assert not os.path.exists(file_expanded), f"File {file_expanded} already exists, which means it may contain something that should not be overwritten."
+            os.makedirs(dir_expanded)
+            with open(file_expanded, "w") as f:
+                f.write("{}")
+            os.environ["DIR"] = "~/.varvault-test-dir"
+            os.environ["VAULT_FILE"] = "vault.json"
+
+            fh = varvault.JsonFilehandler("$DIR/$VAULT_FILE")
+            assert fh.exists()
+        finally:
+            try:
+                os.remove(file_expanded)
+            except OSError:
+                pass
+            try:
+                os.removedirs(dir_expanded)
+            except OSError:
+                pass
+
+        assert not os.path.exists(file_expanded), f"The file {file_expanded} still exists and it shouldn't. You may want to delete it manually"
+        assert not os.path.exists(dir_expanded), f"The directory {dir_expanded} still exists and it shouldn't. You may want to delete it manually"
+        logger.info("Done")
+
+
