@@ -31,6 +31,8 @@ def create_vault(varvault_keyring: Type[Keyring],
     """
     if not VaultFlags.flag_is_set(VaultFlags.remove_existing_log_file(), *flags):
         flags = (VaultFlags.remove_existing_log_file(), *flags)
+    if varvault_filehandler_to:
+        varvault_filehandler_to.live_update = VaultFlags.flag_is_set(VaultFlags.live_update(), *flags)
     return VarVault(varvault_keyring, varvault_vault_name, *flags,
                     varvault_filehandler_from=varvault_filehandler_to,
                     varvault_filehandler_to=varvault_filehandler_to,
@@ -60,6 +62,8 @@ def from_vault(varvault_keyring: Type[Keyring],
     :return: A vault based on vault_filename_from and keyring.
     """
     ignore_keys_not_in_keyring = VaultFlags.flag_is_set(VaultFlags.vault_is_read_only(), *flags) or VaultFlags.flag_is_set(VaultFlags.ignore_keys_not_in_keyring(), *flags)
+    varvault_filehandler_from.live_update = VaultFlags.flag_is_set(VaultFlags.live_update(), *flags)
+    varvault_filehandler_from.vault_is_read_only = VaultFlags.flag_is_set(VaultFlags.vault_is_read_only(), *flags)
 
     if not varvault_filehandler_to:
         varvault_filehandler_to = varvault_filehandler_from
@@ -89,14 +93,7 @@ def from_vault(varvault_keyring: Type[Keyring],
 
 
 def _check_for_keys_not_in_keyring(varvault_keyring: Type[Keyring], varvault_filehandler_from: BaseFileHandler, ignore_keys_not_in_keyring: bool, *flags: VaultFlags, **extra_keys):
-    try:
-        vault_file_data = varvault_filehandler_from.read()
-    except (ResourceNotFoundError, FileNotFoundError):
-        if VaultFlags.flag_is_set(VaultFlags.live_update(), *flags):
-            # No point checking for keys not in the keyring at this point
-            return list()
-        else:
-            raise
+    vault_file_data = varvault_filehandler_from.read()
 
     assert isinstance(vault_file_data, dict), f"It appears we were not able to load a Dict from {varvault_filehandler_from}. Are you sure this is a valid resource? (content={vault_file_data})"
     keys_in_keyring = varvault_keyring.get_keys_in_keyring()

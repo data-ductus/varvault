@@ -1,5 +1,5 @@
-import os
 import abc
+import os.path
 import warnings
 import threading
 
@@ -9,10 +9,27 @@ from typing import Union, Dict, Any, AnyStr
 class BaseFileHandler(abc.ABC):
     def __init__(self, path: Union[AnyStr, Any], live_update=False, vault_is_read_only=False):
         self.lock = threading.Lock()
-        self.raw_path = path
+        self.raw_path = os.path.expanduser(os.path.expandvars(path))
         self.live_update = live_update
         self.vault_is_read_only = vault_is_read_only
-        self.create_resource(path)
+
+    @property
+    def live_update(self):
+        return self._live_update
+
+    @live_update.setter
+    def live_update(self, v: bool):
+        assert isinstance(v, bool), f"Value must be a {bool}"
+        self._live_update = v
+
+    @property
+    def vault_is_read_only(self):
+        return self._vault_is_read_only
+
+    @vault_is_read_only.setter
+    def vault_is_read_only(self, v: bool):
+        assert isinstance(v, bool), f"Value must be a {bool}"
+        self._vault_is_read_only = v
 
     @property
     @abc.abstractmethod
@@ -20,6 +37,7 @@ class BaseFileHandler(abc.ABC):
         """Meant to return the resource that stores the vault in some database."""
         raise NotImplementedError()
 
+    # TODO 4.0.0: remove path as an argument from this and expect the subclass to handle this bit
     @abc.abstractmethod
     def create_resource(self, path: Union[AnyStr, Any]):
         """Meant to create the resource to store the vault in a database."""
@@ -50,12 +68,19 @@ class BaseFileHandler(abc.ABC):
     # Write
     # ================================================================================================================
     def write(self, vault: dict) -> None:
-        f"""Writes the vault to the database by calling the implemented '{self.do_write}' function."""
-        if self.vault_is_read_only:
+        f"""Writes the vault to the database by calling the implemented '{self.do_write}' method."""
+        if not vault:
+            # No point writing an empty dict and it's not the job of this method to create the file
+            return
+        if self._vault_is_read_only:
             warnings.warn("Tried to write to a vault-file defined as read-only. This is not permitted by varvault.")
-        if self.resource:
+        if not self.resource:
+            self.create_resource(self.path)
+        try:
             with self.lock:
                 self.do_write(vault)
+        except Exception as e:
+            raise ResourceNotFoundError(f"Failed to write to the resource: {e}", self)
 
     @abc.abstractmethod
     def do_write(self, vault: dict) -> None:
@@ -75,25 +100,18 @@ class BaseFileHandler(abc.ABC):
     # Read
     # ================================================================================================================
     def read(self) -> Dict:
-        f"""Reads the vault from the database by calling the implemented '{self.do_read}' function."""
-        if self.resource:
+        f"""Reads the vault from the database by calling the implemented '{self.do_read}' method."""
+        if not self.resource:
+            self.create_resource(self.path)
+        try:
             with self.lock:
-                try:
-                    return self.do_read()
-                except Exception as e:
-                    if self.live_update:
-                        # live-update has been defined; This means that any error from reading
-                        # the file must be considered okay as the file might not exist yet.
-                        return {}
-                    raise e
-        elif not self.resource and self.live_update:
-            try:
-                self.create_resource(self.path)
-                with self.lock:
-                    return self.do_read()
-            except (FileNotFoundError, ResourceNotFoundError):
+                return self.do_read()
+        except Exception as e:
+            if self.live_update:
+                # live-update has been defined; This means that any error from reading
+                # the file must be considered okay as the file might not exist yet.
                 return {}
-        raise ResourceNotFoundError("Tried to read from the resource but the resource isn't created correctly and live-update isn't defined", self)
+            raise ResourceNotFoundError(f"Failed to read from the resource and live-update isn't defined: {e}", self)
 
     @abc.abstractmethod
     def do_read(self) -> Dict:
@@ -109,7 +127,7 @@ class BaseFileHandler(abc.ABC):
         raise NotImplementedError()
 
     def __str__(self):
-        return f"resource={self.resource}; path={self.path}; live_update={self.live_update}; vault_is_read_only={self.vault_is_read_only}"
+        return f"resource={self.resource}; path={self.path}; live_update={self.live_update}; vault_is_read_only={self._vault_is_read_only}"
 
 
 class ResourceNotFoundError(FileNotFoundError):

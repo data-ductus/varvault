@@ -94,17 +94,21 @@ class VarVault(object):
 
         disable_logger = VaultFlags.flag_is_set(VaultFlags.disable_logger(), *flags)
         remove_existing_log_file = VaultFlags.flag_is_set(VaultFlags.remove_existing_log_file(), *flags)
+        if varvault_specific_logger:
+            self.logger = varvault_specific_logger
+        else:
+            self.logger = get_logger(varvault_vault_name, remove_existing_log_file) if not disable_logger else None
+
         self.keyring_class = varvault_keyring
         self.flags: list = list(flags)
         self.vault_is_read_only = VaultFlags.flag_is_set(VaultFlags.vault_is_read_only(), *self.flags)
         self.live_update = VaultFlags.flag_is_set(VaultFlags.live_update(), *self.flags)
         self.filehandler_from: BaseFileHandler = varvault_filehandler_from
         self.filehandler_to: BaseFileHandler = varvault_filehandler_to
-
-        if varvault_specific_logger:
-            self.logger = varvault_specific_logger
-        else:
-            self.logger = get_logger(varvault_vault_name, remove_existing_log_file) if not disable_logger else None
+        if not self.filehandler_from.resource:
+            self.filehandler_from.create_resource(self.filehandler_from.path)
+        if not self.filehandler_to.resource:
+            self.filehandler_to.create_resource(self.filehandler_to.path)
 
         self.lock = Lock()
 

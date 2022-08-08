@@ -42,9 +42,19 @@ def clear_logs():
 
 class JsonFilehandler(BaseFileHandler):
 
-    def __init__(self, path: AnyStr, live_update=False, vault_is_read_only=False):
+    def __init__(self, path: AnyStr, live_update=False, vault_is_read_only=False, create_file_on_live_update=False):
+        """
+        Creates the JsonFileHandler object.
+        :param path: This should be the path to the JSON file that the vault should be using.
+        :param live_update: An optional flag to say if we should do live-update on the vault. Essentially, a vault can be created where either the file or the object in memory is in
+          charge of the state of the vault. This flag gives the file the ownership of the vault.
+        :param vault_is_read_only: An optional flag to say if we are only allowed to read from the vault and never do any changes to the file.
+        :param create_file_on_live_update: An optional flag specific for this filehandler. It tells if we should create the file when we use live-update or not.
+          Normally, you'd expect the file to be created by something, or someone, else.
+        """
         path = os.path.expanduser(os.path.expandvars(path))
         self.file_io = None
+        self.create_file_on_live_update = create_file_on_live_update
         super(JsonFilehandler, self).__init__(path, live_update, vault_is_read_only)
 
     @property
@@ -52,10 +62,15 @@ class JsonFilehandler(BaseFileHandler):
         """Returns the file resource object for this handler."""
         return self.file_io
 
+    # TODO 4.0.0: remove path as an argument from this and expect the subclass to handle this bit
     def create_resource(self, path: Union[AnyStr, Any]) -> None:
         """Creates the resource self.file_io for this handler which we'll use to read and write to."""
-        if path and self.live_update and not os.path.exists(path):
-            self.file_io = None
+        if path and self._live_update and not os.path.exists(path):
+            if self.create_file_on_live_update:
+                self.file_io = open(path, "w")
+                self.file_io.close()
+            else:
+                self.file_io = None
         elif path and not os.path.exists(path):
             # Create the file; It doesn't exist. Try to create the folder first.
             os.makedirs(os.path.dirname(path), exist_ok=True)

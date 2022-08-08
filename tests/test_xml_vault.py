@@ -14,6 +14,7 @@ class XmlFileHandler(varvault.BaseFileHandler):
     KEY = "VAULT"
 
     def __init__(self, path: str, live_update=False, file_is_read_only=False):
+        self.file_io = None
         super(XmlFileHandler, self).__init__(path, live_update, file_is_read_only)
 
     @property
