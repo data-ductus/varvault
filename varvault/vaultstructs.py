@@ -4,8 +4,8 @@ import abc
 class VaultStructBase(abc.ABC):
     @classmethod
     @abc.abstractmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
-        raise NotImplementedError(f"{cls.build_from_vault_key.__name__} was not implemented in the subclass that inherited this.")
+    def create(cls, vault_key, vault_value):
+        raise NotImplementedError(f"{cls.create.__name__} was not implemented in the subclass that inherited this.")
 
 
 class VaultStructDictBase(VaultStructBase, dict, abc.ABC):

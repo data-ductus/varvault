@@ -34,3 +34,11 @@ class MiniVault(dict):
     def add(self, k, v):
         """Adds a value mapped to a key. Essentially just wraps the '__setitem__' function."""
         self.__setitem__(k, v)
+
+    def keys(self) -> List[Key]:
+        """Returns a list of keys"""
+        return list(super(MiniVault, self).keys())
+
+    def values(self) -> List[Any]:
+        """Returns a list of values"""
+        return list(super(MiniVault, self).values())

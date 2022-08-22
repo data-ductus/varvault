@@ -18,6 +18,9 @@ class VaultFlags(str):
         elif isinstance(other, str):
             return self.name == other
 
+    def __hash__(self):
+        return hash(self.name)
+
     @staticmethod
     def flag_is_set(flag: VaultFlags, *flags: VaultFlags):
         f"""This is not a flag. This function checks if a flag exists among a bunch of flags"""
@@ -107,3 +110,11 @@ class VaultFlags(str):
         f"""Flag to tell a vaulter-decorated function to not log exceptions. Exceptions can sometimes be expected,
         and sometimes it might be preferable to not log errors using varvault and just log them normally."""
         return VaultFlags(VaultFlags.no_error_logging.__name__)
+
+    @staticmethod
+    def use_signature_for_input_keys():
+        f"""Flag to tell varvault to use the keyword args in the signature of a decorated function to determine the keys to extract from the vault. This effectively removes 
+        the need to define input keys through the decorator. Instead, you just need to define the input keys in the signature of the decorated function by calling the keyword 
+        argument the same as the key. This will make tracking where the keys in the Keyring are used harder, but reduces the amount of boilerplate required. Can be defined 
+        for the entire vault, or for a specific decorated function only."""
+        return VaultFlags(VaultFlags.use_signature_for_input_keys.__name__)

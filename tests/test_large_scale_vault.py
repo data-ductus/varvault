@@ -20,7 +20,7 @@ class ResultToUploadDict(varvault.VaultStructDictBase):
         self.logpath = vault_pairs.get("logpath")
 
     @classmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
+    def create(cls, vault_key, vault_value):
         return ResultToUploadDict(**vault_value)
 
 
@@ -32,7 +32,7 @@ class ResultDict(ResultToUploadDict):
         self.version_ha3 = vault_pairs.get("version_ha3")
 
     @classmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
+    def create(cls, vault_key, vault_value):
         return ResultDict(**vault_value)
 
 
@@ -44,18 +44,18 @@ class GroupInstallers(varvault.VaultStructDictBase):
             self.installer_upgrade = installer_upgrade
 
         @classmethod
-        def build_from_vault_key(cls, vault_key, vault_value):
+        def create(cls, vault_key, vault_value):
             return GroupInstallers.Group(**vault_value)
 
     def __init__(self, **vault_pairs):
         super(GroupInstallers, self).__init__(**vault_pairs)
         for group, group_data in vault_pairs.items():
-            self.__setattr__(group, self.Group.build_from_vault_key(vault_key=group,
-                                                                    vault_value=dict(installer=group_data.get("installer"),
-                                                                                     installer_upgrade=group_data.get("installer-upgrade"))))
+            self.__setattr__(group, self.Group.create(vault_key=group,
+                                                      vault_value=dict(installer=group_data.get("installer"),
+                                                                       installer_upgrade=group_data.get("installer-upgrade"))))
 
     @classmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
+    def create(cls, vault_key, vault_value):
         return GroupInstallers(**vault_value)
 
 

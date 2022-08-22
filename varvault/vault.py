@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import functools
 import traceback
@@ -8,11 +9,11 @@ import traceback
 from typing import *
 from threading import Lock
 
-from .filehandlers import BaseFileHandler, ResourceNotFoundError
+from .filehandlers import BaseFileHandler
 from .keyring import Keyring, Key
 from .logger import get_logger, configure_logger
 from .minivault import MiniVault
-from .utils import concurrent_execution, create_mini_vault_from_file
+from .utils import concurrent_execution, AssignedByVault
 from .vaultflags import VaultFlags
 
 
@@ -27,7 +28,7 @@ class VarVault(object):
 
         def __setitem__(self, key, value):
             data = {key: value}
-            if self.filehandler and self.filehandler.kv_pair_can_be_written(data):
+            if self.filehandler and self.filehandler.writable(data):
                 self.writable_args.update(data)
 
             super(VarVault.Vault, self).__setitem__(key, value)
@@ -100,25 +101,24 @@ class VarVault(object):
             self.logger = get_logger(varvault_vault_name, remove_existing_log_file) if not disable_logger else None
 
         self.keyring_class = varvault_keyring
-        self.flags: list = list(flags)
+        self.flags: set = set(flags)
         self.vault_is_read_only = VaultFlags.flag_is_set(VaultFlags.vault_is_read_only(), *self.flags)
         self.live_update = VaultFlags.flag_is_set(VaultFlags.live_update(), *self.flags)
         self.filehandler_from: BaseFileHandler = varvault_filehandler_from
         self.filehandler_to: BaseFileHandler = varvault_filehandler_to
         if not self.filehandler_from.resource:
-            self.filehandler_from.create_resource(self.filehandler_from.path)
+            self.filehandler_from.create_resource()
         if not self.filehandler_to.resource:
-            self.filehandler_to.create_resource(self.filehandler_to.path)
+            self.filehandler_to.create_resource()
 
         self.lock = Lock()
 
         # Get the keys from the keyring and expand it with extra keys
-        self.keys: Dict[str, Key] = self.keyring_class.get_keys_in_keyring()
+        self.keys: Dict[str, Key] = self.keyring_class.get_keys()
         self.keys.update(extra_keys)
 
         # Create the inner vault
-        self.inner_vault = self.Vault(varvault_filehandler_to, vault_is_read_only=self.vault_is_read_only, live_update=self.live_update)
-        self.vault_file_from_hash = self._get_vault_file_hash()
+        self._inner_vault = self.Vault(varvault_filehandler_to, vault_is_read_only=self.vault_is_read_only, live_update=self.live_update)
 
         if self.filehandler_to:
             self.log(f"Vault writing data to '{self.filehandler_to.path}'", level=logging.INFO)
@@ -135,7 +135,7 @@ class VarVault(object):
         return key in self.vault
 
     def __str__(self):
-        return self.inner_vault.__str__()
+        return self._inner_vault.__str__()
     
     def log(self, msg: object, *args, level: int = logging.DEBUG, exception: BaseException = None):
         assert isinstance(level, int), "Log level must be defined as an integer"
@@ -144,7 +144,7 @@ class VarVault(object):
 
     @property
     def vault(self) -> Vault:
-        return self.inner_vault
+        return self._inner_vault
 
     # =========================================================================================================================================
     # vaulter
@@ -168,7 +168,8 @@ class VarVault(object):
          {VaultFlags.split_return_keys},
          {VaultFlags.return_key_can_be_missing},
          {VaultFlags.clean_return_keys},
-         {VaultFlags.no_error_logging}
+         {VaultFlags.no_error_logging},
+         {VaultFlags.use_signature_for_input_keys},
         """
         input_keys = input_keys if input_keys else list()
         return_keys = return_keys if return_keys else list()
@@ -180,39 +181,13 @@ class VarVault(object):
         input_keys, return_keys = self._vaulter__convert_input_keys_and_return_keys(input_keys, return_keys)
 
         # Assert that the keys are in the keyring
-        self._vaulter__assert_keys_in_keyring(input_keys, return_keys)
+        self._assert_keys_in_keyring(input_keys)
+        self._assert_keys_in_keyring(return_keys)
 
         def wrap_outer(func):
             func_module_name = f"{func.__module__}.{func.__name__}"
-
-            def pre_call(**kwargs):
-                self._try_reload_from_file()
-                input_kwargs = self._vaulter__build_input_var_keys(input_keys, kwargs, *all_flags)
-                kwargs.update(input_kwargs)
-                self._configure_log_levels_based_on_flags(*all_flags)
-                assert callable(func), f"Function {func} is not a callable"
-
-                self.log(f"======{'=' * len(func_module_name)}=")
-                self.log(f">>>>> {func_module_name}:")
-                if input_kwargs:
-                    self.log(f"-------------")
-                    self.log(f"Input kwargs:")
-                    for kwarg_key, kwarg_value in input_kwargs.items():
-                        self.log(f"{kwarg_key}: ({type(kwarg_value)}) -- {kwarg_value}")
-                    self.log(f"-------------")
-
-                input_kwargs.update(kwargs)
-
-                self.log(f"======= Calling {func_module_name} ========")
-                return input_kwargs
-
-            def post_call(ret):
-                self._configure_log_levels_based_on_flags(*all_flags)
-                self._vaulter__handle_return_vars(ret, return_keys, *all_flags)
-                self._configure_log_levels_based_on_flags(*all_flags)
-                self.log(f"<<<<< {func_module_name}:")
-                self.log(f"======{'=' * len(func_module_name)}=\n")
-                self._reset_log_levels()
+            if VaultFlags.flag_is_set(VaultFlags.use_signature_for_input_keys(), *all_flags):
+                self._vaulter__populate_input_keys_from_signature(func, input_keys)
 
             # Separate handling if the decorated function uses the coroutine API
             if asyncio.iscoroutinefunction(func):
@@ -221,7 +196,7 @@ class VarVault(object):
                     #
                     # Do pre-call related stuff
                     #
-                    input_kwargs = pre_call(**kwargs)
+                    input_kwargs = self._vaulter__pre_call(input_keys, func_module_name, *all_flags, **kwargs)
                     try:
                         ret = await func(*args, **input_kwargs)
                     except Exception as e:
@@ -232,7 +207,7 @@ class VarVault(object):
                     #
                     # Do post-call related stuff
                     #
-                    post_call(ret)
+                    self._vaulter__post_call(ret, return_keys, func_module_name, *all_flags)
 
                     return ret
                 return wrap_inner_async
@@ -242,7 +217,8 @@ class VarVault(object):
                     #
                     # Do pre-call related stuff
                     #
-                    input_kwargs = pre_call(**kwargs)
+                    input_kwargs = self._vaulter__pre_call(input_keys, func_module_name, *all_flags, **kwargs)
+
                     try:
                         ret = func(*args, **input_kwargs)
                     except Exception as e:
@@ -255,11 +231,39 @@ class VarVault(object):
                     #
                     # Do post-call related stuff
                     #
-                    post_call(ret)
+                    self._vaulter__post_call(ret, return_keys, func_module_name, *all_flags)
 
                     return ret
                 return wrap_inner
         return wrap_outer
+
+    def _vaulter__pre_call(self, input_keys, func_module_name, *all_flags, **kwargs):
+        self._try_reload_from_file()
+        input_kwargs = self._vaulter__build_input_var_keys(input_keys, *all_flags, **kwargs)
+        kwargs.update(input_kwargs)
+        self._configure_log_levels_based_on_flags(*all_flags)
+
+        self.log(f"======{'=' * len(func_module_name)}=")
+        self.log(f">>>>> {func_module_name}:")
+        if input_kwargs:
+            self.log(f"-------------")
+            self.log(f"Input kwargs:")
+            for kwarg_key, kwarg_value in input_kwargs.items():
+                self.log(f"{kwarg_key}: ({type(kwarg_value)}) -- {kwarg_value}")
+            self.log(f"-------------")
+
+        input_kwargs.update(kwargs)
+
+        self.log(f"======= Calling {func_module_name} ========")
+        return input_kwargs
+
+    def _vaulter__post_call(self, ret, return_keys, func_module_name, *all_flags):
+        self._configure_log_levels_based_on_flags(*all_flags)
+        self._vaulter__handle_return_vars(ret, return_keys, *all_flags)
+        self._configure_log_levels_based_on_flags(*all_flags)
+        self.log(f"<<<<< {func_module_name}:")
+        self.log(f"======{'=' * len(func_module_name)}=\n")
+        self._reset_log_levels()
 
     def _vaulter__validate_input(self, input_keys, return_keys, *flags):
         assert isinstance(input_keys, (Key, list, tuple)), f"input_keys must be of type {Key}, {list}, or {tuple}"
@@ -278,34 +282,43 @@ class VarVault(object):
         assert isinstance(return_keys, (list, tuple)), f"Return keys doesn't have the correct type; actual type: {type(input_keys)}"
         return input_keys, return_keys
 
-    def _vaulter__assert_keys_in_keyring(self, input_keys, return_keys):
-        for key in input_keys:
-            self._assert_key_is_correct_type(key)
-            assert key in self.keys, f"Key '{key}' isn't defined as a key in the keyring"
+    def _vaulter__populate_input_keys_from_signature(self, func, input_keys):
+        signature = inspect.signature(func)
+        faulty_params = list()
+        keys = self.keyring_class.get_keys()
+        for parameter in signature.parameters.values():
+            valid_kind = parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD or parameter.kind == inspect.Parameter.KEYWORD_ONLY
 
-        for key in return_keys:
-            self._assert_key_is_correct_type(key)
-            assert key in self.keys, f"Key '{key}' isn't defined as a key in the keyring"
+            param_name = parameter.name
+            correct_default = parameter.default == AssignedByVault
+            if param_name in keys and valid_kind and param_name not in input_keys:
+                if not correct_default:
+                    faulty_params.append((param_name, "The default value must be assigned to 'varvault.AssignedByVault'"))
+                else:
+                    input_keys.append(self.keyring_class.get_key_by_matching_string(parameter.name))
+            elif correct_default and param_name not in keys:
+                faulty_params.append((param_name, "You assigned the parameter a correct default value, but the parameter doesn't exist as a key in the keyring. "
+                                                  "Did you make a typo in the parameter name? We'll be failing this for you because you more than likely made a mistake"))
+        if faulty_params:
+            raise AssertionError(f"Errors found in the signature: {faulty_params}")
 
-    def _vaulter__build_input_var_keys(self, input_keys, kwargs, *flags):
-        mini = self.get_multiple(input_keys, *flags)
+    def _vaulter__build_input_var_keys(self, input_keys, *all_flags, **kwargs):
+        mini = self.get_multiple(input_keys, *all_flags)
 
-        assert len(input_keys) == len(mini) or VaultFlags.flag_is_set(VaultFlags.input_key_can_be_missing(), *flags), \
+        assert len(input_keys) == len(mini) or VaultFlags.flag_is_set(VaultFlags.input_key_can_be_missing(), *all_flags), \
             f"The number of items acquired from {self.get_multiple.__name__} is not the same as the number of input-keys to the method, " \
             f"and {VaultFlags.input_key_can_be_missing()} is not set. This is probably a bug."
 
-        for key, value in mini.items():
+        for key in mini.keys():
             assert key not in kwargs, f"Key {key} seems to already exist in kwargs used for the function decorated with '@{self.vaulter.__name__}'"
 
         return mini
 
-    def _vaulter__handle_return_vars(self, ret, return_keys, *flags):
+    def _vaulter__handle_return_vars(self, ret, return_keys, *all_flags):
 
         if not return_keys:
             # No return keys were defined; Just return from here then as there is nothing else to do.
             return
-
-        all_flags = self._get_all_flags(*flags)
 
         if VaultFlags.flag_is_set(VaultFlags.split_return_keys(), *all_flags):
             assert isinstance(ret, MiniVault), f"If {VaultFlags.split_return_keys()} is defined, you MUST return values in the form of a {MiniVault} object or we cannot determine which keys go where"
@@ -316,7 +329,7 @@ class VarVault(object):
         if VaultFlags.flag_is_set(VaultFlags.clean_return_keys(), *all_flags):
             self._clean_return_keys(return_keys)
         else:
-            mini = self._to_minivault(return_keys, ret, *flags)
+            mini = self._to_minivault(return_keys, ret, *all_flags)
 
             async def validate_keys_in_mini_vault(key, can_be_missing=False):
                 assert key in mini or can_be_missing, f"Key {key} isn't present in MiniVault; keys in mini: {mini.keys()}. " \
@@ -327,7 +340,7 @@ class VarVault(object):
                 assert key in return_keys, f"Key {key} isn't defined as a return-key; return keys: {return_keys}"
             concurrent_execution(validate_keys_in_return_keys, mini.keys())
 
-            self.insert_minivault(mini, *flags)
+            self.insert_minivault(mini, *all_flags)
 
     # ============================================================
     # insert
@@ -365,15 +378,13 @@ class VarVault(object):
         all_flags = self._get_all_flags(*flags)
 
         # Assert that key has correct type
-        for key in mini.keys():
-            self._assert_key_is_correct_type(key)
+        self._assert_keys_in_keyring(mini.keys())
         self._configure_log_levels_based_on_flags(*all_flags)
 
         async def assert_key_and_value_may_be_inserted(key, value):
             if VaultFlags.flag_is_set(VaultFlags.return_values_cannot_be_none(), *all_flags):
                 assert value is not None, f"The value mapped to {key} is {None} and {VaultFlags.return_values_cannot_be_none()} is defined."
 
-            self._insert__assert_key_in_keyring(key)
             self._insert__assert_value_may_be_inserted(key, value, modifications_permitted=VaultFlags.flag_is_set(VaultFlags.permit_modifications(), *all_flags))
         concurrent_execution(assert_key_and_value_may_be_inserted, mini.keys(), mini.values())
 
@@ -385,10 +396,6 @@ class VarVault(object):
             self.vault.put(mini)
             self.log("-----------------")
         self._reset_log_levels()
-
-    def _insert__assert_key_in_keyring(self, key: Key):
-        """Assert that the key is in the keyring"""
-        assert key in self.keys
 
     def _insert__assert_value_may_be_inserted(self, key: Key, value: object, modifications_permitted=False):
         # Validate that key doesn't already exist in the vault, or that modifications_permitted==True
@@ -434,8 +441,7 @@ class VarVault(object):
 
         all_flags = self._get_all_flags(*flags)
         mini = MiniVault()
-        for key in keys:
-            self._assert_key_is_correct_type(key)
+        self._assert_keys_in_keyring(keys)
         with self.lock:
             self._try_reload_from_file()
 
@@ -448,6 +454,19 @@ class VarVault(object):
             [mini.update({key: self.vault.get(key)}) for key in keys if key in self]
             self._reset_log_levels()
         return mini
+
+    # ==================================================
+    # privates
+    # ==================================================
+    def _get_all_flags(self, *flags):
+        self._assert_flag_is_correct_type(*flags)
+        all_flags = self.flags.copy()
+        all_flags.update(flags)
+        return all_flags
+
+    def _assert_flag_is_correct_type(self, *flags: VaultFlags):
+        for flag in flags:
+            assert isinstance(flag, VaultFlags), f"{flag} is not of type {VaultFlags}"
 
     def _assert_key_is_correct_type(self, key: Key, can_be_str=False, msg=None):
         # Define the error message based on input
@@ -462,44 +481,21 @@ class VarVault(object):
         else:
             assert isinstance(key, Key), msg
 
+    def _assert_keys_in_keyring(self, keys: Union[List[Key], Key]):
+        if isinstance(keys, Key):
+            keys = [keys]
+        for key in keys:
+            self._assert_key_is_correct_type(key)
+            assert key in self.keys, f"Key {key} is not in the keyring."
+
     def _try_reload_from_file(self):
-        """Can be used to reload from a file if changes has been made to it before"""
+        """Can be used to reload from a file if changes has been made to it since it was read last time."""
         if self.filehandler_from and self.live_update:
-            if not self.filehandler_from.resource:
-                self.filehandler_from.create_resource(self.filehandler_from.path)
-            current_hash = self._get_vault_file_hash()
+            if not self.filehandler_from.resource_has_changed():
+                return
 
-            # If current hash is an empty string, that means no hash was able to be acquired. In this case, there is no file to load from; Raise FileNotFoundError
-            if current_hash == "":
-                raise ResourceNotFoundError(f"Failed to read from resource {self.filehandler_from.path} to get the current "
-                                            f"contents of it to perform live updates. This means you've created a vault "
-                                            f"from a file that doesn't exist and set it to perform live updates, but you "
-                                            f"tried to read from the vault-file before the vault-file was created. This "
-                                            f"is simply not permitted and you will have to look at your workflow to "
-                                            f"figure out an appropriate solution for this problem. ", self.filehandler_from)
-
-            if current_hash != self.vault_file_from_hash:
-                mini = create_mini_vault_from_file(self.filehandler_from, self.keyring_class)
-                self.vault_file_from_hash = current_hash
-                self.vault.put(mini)
-
-    def _get_vault_file_hash(self):
-        if not self.filehandler_from:
-            return ""
-        else:
-            try:
-                return self.filehandler_from.hash()
-            except (ResourceNotFoundError, FileNotFoundError) as e:
-                if self.live_update:
-                    # This is fine; It just means the file doesn't exist yet
-                    return ""
-                else:
-                    raise e
-
-    def _get_all_flags(self, *flags):
-        all_flags = self.flags.copy()
-        all_flags.extend(flags)
-        return all_flags
+            mini = MiniVault(self.filehandler_from.read())
+            self.vault.put(mini)
 
     def _configure_log_levels_based_on_flags(self, *all_flags):
         if not self.logger:
@@ -534,8 +530,7 @@ class VarVault(object):
                     self.log(f"Cleaning key {key} by setting it to '{None}' (valid_type is defined, but no default constructor appears to exist for {key.valid_type})")
             self.vault.put(key, temp)
 
-    def _to_minivault(self, return_keys, ret, *flags) -> MiniVault:
-        all_flags = self._get_all_flags(*flags)
+    def _to_minivault(self, return_keys, ret, *all_flags) -> MiniVault:
         if isinstance(ret, MiniVault):
             mini = ret
         else:

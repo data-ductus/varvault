@@ -1,4 +1,5 @@
 import asyncio
+import enum
 from types import *
 from typing import *
 
@@ -8,53 +9,14 @@ from .vaultstructs import VaultStructBase
 from .filehandlers import BaseFileHandler
 
 
-def concurrently(*args_as_iterable: Union[Sized, Iterable], **input_kwargs):
+class AssignedByVaultEnum(enum.Enum):
     """
-    Decorator for running a coroutine-function concurrently.
-
-    Example:
-
-    ```
-    @concurrently([1, 2, 3, 4, 5], (10, 20, 30, 40), const="2")
-    async def run(k, v, const=None):
-        print(k, v, const)
-        return k * v
-
-
-    if __name__ == '__main__':
-        print(run())
-    ```
-
-    Output:
-
-    ```
-    1 10 const
-    2 20 const
-    3 30 const
-    4 40 const
-    [10, 40, 90, 160]  # This is from printing the result from run()
-    ```
-
-    Note that the 5th item in the first list was ignored because the second iterable only included 4 elements. This is due to 'zip'.
-    Filling out the tuple with None as the 5th element would make it work.
-
-    :param args_as_iterable: The arguments as iterables to pass to the decorated function. The arguments are combined using the builtin keyword 'zip'.
-    :param input_kwargs: Args passed as constants to the function, i.e. these variables will be sent to every call for the decorated function.
+    Enum that represents the assigned_by_vault attribute of a variable.
     """
-    import functools
-    import asyncio
+    ASSIGNED = True
 
-    def wrap_outer(func: Union[Coroutine, FunctionType, Callable]):
-        assert asyncio.iscoroutinefunction(func), f"Function {func.__module__}.{func.__name__} is not defined as a coroutine; define it as 'async def {func.__name__}(...)'"
 
-        @functools.wraps(func)
-        def wrap_inner(*args, **kwargs):
-            # Don't use args or kwargs; That's not how this is meant to be used
-            assert len(args) == 0 and len(kwargs) == 0, f"You should not pass arguments to this function ({func.__module__}.{func.__name__}) when it's decorated with '{concurrently.__module__}.{concurrently.__name__}'. Arguments should come from the decorator."
-            return concurrent_execution(func, *args_as_iterable, **input_kwargs)
-
-        return wrap_inner
-    return wrap_outer
+AssignedByVault = AssignedByVaultEnum.ASSIGNED
 
 
 def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inputs, **kwargs):
@@ -91,7 +53,7 @@ def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inpu
     return asyncio.run(do(target, *inputs, **kwargs))
 
 
-def create_mini_vault_from_file(varvault_filehandler_from: BaseFileHandler, varvault_keyring: Type[Keyring], **extra_keys) -> MiniVault:
+def create_mv_from_resource(varvault_filehandler_from: BaseFileHandler, varvault_keyring: Type[Keyring], **extra_keys) -> MiniVault:
     f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the {varvault_filehandler_from} passed."""
     assert isinstance(varvault_filehandler_from, BaseFileHandler), f"'varvault_filehandler_from' must be an instance of {BaseFileHandler}, not {type(varvault_filehandler_from)}"
     assert issubclass(varvault_keyring, Keyring), f"'varvault_keyring' must be a subclass of {Keyring}, not {varvault_keyring} ({type(varvault_keyring)})"
@@ -100,7 +62,7 @@ def create_mini_vault_from_file(varvault_filehandler_from: BaseFileHandler, varv
     assert isinstance(vault_file_data, dict), f"'vault_file_data' from the filehandler is not a dict: {vault_file_data}"
 
     # Get the keys from the keyring as a list.
-    keys_from_keyring = varvault_keyring.get_keys_in_keyring()
+    keys_from_keyring = varvault_keyring.get_keys()
     keys_from_keyring.update(extra_keys)
     return_vault_data = dict()
 
@@ -109,7 +71,7 @@ def create_mini_vault_from_file(varvault_filehandler_from: BaseFileHandler, varv
             return
         key: Key = keys_from_keyring[key_in_file]
         if key.valid_type and issubclass(key.valid_type, VaultStructBase):
-            return_vault_data[key] = key.valid_type.build_from_vault_key(key_in_file, vault_file_data[key_in_file])
+            return_vault_data[key] = key.valid_type.create(key_in_file, vault_file_data[key_in_file])
         else:
             if key.can_be_none and vault_file_data[key_in_file] is None:
                 return_vault_data[key] = None

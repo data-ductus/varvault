@@ -101,3 +101,19 @@ class TestLiveUpdate:
             assert key_valid_type_is_str == "valid"
             assert key_valid_type_is_int == 1
         validate()
+
+    def test_filehandler_live_update(self):
+        fh = varvault.JsonFilehandler(vault_file_new, live_update=True, create_file_on_live_update=True)
+        assert not fh.exists()
+        fh.create_resource()
+        assert fh.exists()
+        pre_state = fh.state
+        json.dump({Keyring.key_valid_type_is_str: "valid", Keyring.key_valid_type_is_int: 1}, open(vault_file_new, "w"))
+        assert fh.resource_has_changed()
+        assert fh.cached_state != pre_state
+        data = fh.read()
+        assert data[Keyring.key_valid_type_is_str] == "valid"
+        assert data[Keyring.key_valid_type_is_int] == 1
+        fh.update_state()
+
+        assert fh.last_known_state == fh.cached_state

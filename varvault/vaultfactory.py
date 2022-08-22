@@ -7,7 +7,7 @@ from .keyring import Keyring
 from .minivault import MiniVault
 from .vaultflags import VaultFlags
 from .vault import VarVault
-from .utils import create_mini_vault_from_file
+from .utils import create_mv_from_resource
 
 
 def create_vault(varvault_keyring: Type[Keyring],
@@ -68,9 +68,9 @@ def from_vault(varvault_keyring: Type[Keyring],
     if not varvault_filehandler_to:
         varvault_filehandler_to = varvault_filehandler_from
 
-    keys_not_in_keyring = _check_for_keys_not_in_keyring(varvault_keyring, varvault_filehandler_from, ignore_keys_not_in_keyring, *flags, **extra_keys)
+    keys_not_in_keyring = _check_for_keys_not_in_keyring(varvault_keyring, varvault_filehandler_from, ignore_keys_not_in_keyring, **extra_keys)
     if varvault_filehandler_from.exists():
-        mini = create_mini_vault_from_file(varvault_filehandler_from, varvault_keyring, **extra_keys)
+        mini = create_mv_from_resource(varvault_filehandler_from, varvault_keyring, **extra_keys)
     elif not varvault_filehandler_from.exists() and VaultFlags.flag_is_set(VaultFlags.live_update(), *flags):
         mini = MiniVault()
     else:
@@ -92,11 +92,11 @@ def from_vault(varvault_keyring: Type[Keyring],
     return vault
 
 
-def _check_for_keys_not_in_keyring(varvault_keyring: Type[Keyring], varvault_filehandler_from: BaseFileHandler, ignore_keys_not_in_keyring: bool, *flags: VaultFlags, **extra_keys):
+def _check_for_keys_not_in_keyring(varvault_keyring: Type[Keyring], varvault_filehandler_from: BaseFileHandler, ignore_keys_not_in_keyring: bool, **extra_keys):
     vault_file_data = varvault_filehandler_from.read()
 
     assert isinstance(vault_file_data, dict), f"It appears we were not able to load a Dict from {varvault_filehandler_from}. Are you sure this is a valid resource? (content={vault_file_data})"
-    keys_in_keyring = varvault_keyring.get_keys_in_keyring()
+    keys_in_keyring = varvault_keyring.get_keys()
     keys_in_keyring.update(extra_keys)
     keys_in_file = vault_file_data.keys()
     _keys_not_in_keyring = [k for k in keys_in_file if k not in keys_in_keyring]
