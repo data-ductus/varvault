@@ -53,23 +53,20 @@ def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inpu
     return asyncio.run(do(target, *inputs, **kwargs))
 
 
-def create_mv_from_resource(varvault_filehandler_from: BaseResource, varvault_keyring: Type[Keyring], **extra_keys) -> MiniVault:
-    f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the {varvault_filehandler_from} passed."""
-    assert isinstance(varvault_filehandler_from, BaseResource), f"'varvault_filehandler_from' must be an instance of {BaseResource}, not {type(varvault_filehandler_from)}"
-    assert issubclass(varvault_keyring, Keyring), f"'varvault_keyring' must be a subclass of {Keyring}, not {varvault_keyring} ({type(varvault_keyring)})"
-    vault_file_data = varvault_filehandler_from.read()
+def create_mv_from_resource(varvault_resource_from: BaseResource, **keys) -> MiniVault:
+    f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the {varvault_resource_from} passed."""
+    assert isinstance(varvault_resource_from, BaseResource), f"'varvault_resource_from' must be an instance of {BaseResource}, not {type(varvault_resource_from)}"
+    vault_file_data = varvault_resource_from.read()
 
     assert isinstance(vault_file_data, dict), f"'vault_file_data' from the filehandler is not a dict: {vault_file_data}"
 
     # Get the keys from the keyring as a list.
-    keys_from_keyring = varvault_keyring.get_keys()
-    keys_from_keyring.update(extra_keys)
     return_vault_data = dict()
 
     async def build(key_in_file: str):
-        if key_in_file not in keys_from_keyring:
+        if key_in_file not in keys:
             return
-        key: Key = keys_from_keyring[key_in_file]
+        key: Key = keys[key_in_file]
         if key.valid_type and issubclass(key.valid_type, VaultStructBase):
             return_vault_data[key] = key.valid_type.create(key_in_file, vault_file_data[key_in_file])
         else:

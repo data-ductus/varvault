@@ -1,3 +1,5 @@
+import json
+
 from commons import *
 
 
@@ -218,3 +220,38 @@ class TestVaultStructs:
         except NotImplementedError as e:
             logger.info(f"Expected error {e}: failed to load vault with key as invalid VaultStruct")
 
+    def test_with_live_update(self):
+        resource = varvault.JsonResource(vault_file_new, create_file_on_live_update=True)
+        vault = varvault.create_vault(KeyringVaultStruct, "vault", varvault.VaultFlags.live_update(), varvault_resource_to=resource)
+        extra = {KeyringVaultStruct.key_vault_struct_int: VaultStructInt(1, 1)}
+        state = resource.state
+        logger.info(f"After create: {state}")
+        mv = varvault.MiniVault({KeyringVaultStruct.key_vault_struct_dict: VaultStructDict("v1", 1),
+                                 KeyringVaultStruct.key_vault_struct_list: VaultStructList("v1", 1),
+                                 KeyringVaultStruct.key_vault_struct_string: VaultStructString("v1", 1),
+                                 KeyringVaultStruct.key_vault_struct_float: VaultStructFloat(3.14, 1)})
+        vault.insert_minivault(mv)
+        logger.info(f"After insert: {resource.state}")
+        assert state != resource.state, "State of the file appears to have not changed"
+        state = resource.state
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_dict), VaultStructDict), type(vault.get(KeyringVaultStruct.key_vault_struct_dict))
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_list), VaultStructList), type(vault.get(KeyringVaultStruct.key_vault_struct_list))
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_string), VaultStructString), type(vault.get(KeyringVaultStruct.key_vault_struct_string))
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_float), VaultStructFloat), type(vault.get(KeyringVaultStruct.key_vault_struct_float))
+        assert state == resource.state, "State of the file has changed when it should have stayed the same. For some reason the vault updated the file unexpectedly"
+        state = resource.state
+        logger.info(f"After read: {resource.state}")
+
+        d = json.load(open(vault_file_new))
+        d.update(extra)
+        json.dump(d, open(vault_file_new, "w"))
+
+        logger.info(f"After update: {resource.state}")
+        assert state != resource.state, "State of the file appears to have not changed, but we just added an extra key to the file"
+
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_dict), VaultStructDict), type(vault.get(KeyringVaultStruct.key_vault_struct_dict))
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_list), VaultStructList), type(vault.get(KeyringVaultStruct.key_vault_struct_list))
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_string), VaultStructString), type(vault.get(KeyringVaultStruct.key_vault_struct_string))
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_float), VaultStructFloat), type(vault.get(KeyringVaultStruct.key_vault_struct_float))
+
+        logger.info(f"After second read: {resource.state}")

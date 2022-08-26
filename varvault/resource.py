@@ -42,8 +42,10 @@ class BaseResource(abc.ABC):
         self.last_known_state = self.state
         return self.cached_state != self.last_known_state
 
-    def update_state(self):
+    def update_state(self, fetch_state=True):
         """Updates the state by fetching the current state."""
+        if fetch_state:
+            self.last_known_state = self.state
         self.cached_state = self.last_known_state
 
     @property
@@ -122,8 +124,9 @@ class BaseResource(abc.ABC):
             self.create_resource()
         try:
             with self.lock:
+                data = self.do_read()
                 self.update_state()
-                return self.do_read()
+                return data
         except Exception as e:
             if self.live_update:
                 # live-update has been defined; This means that any error from reading

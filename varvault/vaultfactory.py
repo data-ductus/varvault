@@ -70,7 +70,7 @@ def from_vault(varvault_keyring: Type[Keyring],
 
     keys_not_in_keyring = _check_for_keys_not_in_keyring(varvault_keyring, varvault_resource_from, ignore_keys_not_in_keyring, **extra_keys)
     if varvault_resource_from.exists():
-        mini = create_mv_from_resource(varvault_resource_from, varvault_keyring, **extra_keys)
+        mini = create_mv_from_resource(varvault_resource_from, **varvault_keyring.get_keys(), **extra_keys)
     elif not varvault_resource_from.exists() and VaultFlags.flag_is_set(VaultFlags.live_update(), *flags):
         mini = MiniVault()
     else:

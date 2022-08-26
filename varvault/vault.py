@@ -13,7 +13,7 @@ from .resource import BaseResource
 from .keyring import Keyring, Key
 from .logger import get_logger, configure_logger
 from .minivault import MiniVault
-from .utils import concurrent_execution, AssignedByVault
+from .utils import concurrent_execution, AssignedByVault, create_mv_from_resource
 from .vaultflags import VaultFlags
 
 
@@ -24,11 +24,11 @@ class VarVault(object):
             self.writable_args = dict()
             self.vault_is_read_only = vault_is_read_only
             self.live_update = live_update
-            self.filehandler = vault_resource
+            self.resource = vault_resource
 
         def __setitem__(self, key, value):
             data = {key: value}
-            if self.filehandler and self.filehandler.writable(data):
+            if self.resource and self.resource.writable(data):
                 self.writable_args.update(data)
 
             super(VarVault.Vault, self).__setitem__(key, value)
@@ -58,12 +58,12 @@ class VarVault(object):
             if self.vault_is_read_only:
                 return
 
-            # No filehandler has been defined, which means we cannot write anything to the file
-            if not self.filehandler:
+            # No resource has been defined, which means we cannot write anything to the file
+            if not self.resource:
                 return
 
             # Try to write writable_args to vault_file if it has been defined
-            self.filehandler.write(self.writable_args)
+            self.resource.write(self.writable_args)
 
     def __init__(self,
                  varvault_keyring: Type[Keyring],
@@ -238,7 +238,6 @@ class VarVault(object):
         return wrap_outer
 
     def _vaulter__pre_call(self, input_keys, func_module_name, *all_flags, **kwargs):
-        self._try_reload_from_file()
         input_kwargs = self._vaulter__build_input_var_keys(input_keys, *all_flags, **kwargs)
         kwargs.update(input_kwargs)
         self._configure_log_levels_based_on_flags(*all_flags)
@@ -493,9 +492,9 @@ class VarVault(object):
         if self.resource_from and self.live_update:
             if not self.resource_from.resource_has_changed():
                 return
-
-            mini = MiniVault(self.resource_from.read())
-            self.vault.put(mini)
+            self.log(f"Reloading from {self.resource_from.path}; The content has changed and live-update is enabled.")
+            mv = create_mv_from_resource(self.resource_from, **self.keys)
+            self.vault.put(mv)
 
     def _configure_log_levels_based_on_flags(self, *all_flags):
         if not self.logger:
