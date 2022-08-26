@@ -10,13 +10,13 @@ vault_file_new = f"{DIR}/new-vault.xml"
 existing_vault = f"{DIR}/existing-vault.xml"
 
 
-class XmlFileHandler(varvault.BaseFileHandler):
+class XmlResource(varvault.BaseResource):
 
     KEY = "VAULT"
 
     def __init__(self, path: str, live_update=False, file_is_read_only=False):
         self.file_io = None
-        super(XmlFileHandler, self).__init__(path, live_update, file_is_read_only)
+        super(XmlResource, self).__init__(path, live_update, file_is_read_only)
 
     @property
     def resource(self) -> TextIO:
@@ -92,7 +92,7 @@ class TestXmlVault:
             pass
 
     def test_create_xml_vault(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=XmlFileHandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=XmlResource(vault_file_new))
 
         @vault.vaulter(return_keys=(Keyring.string_value, Keyring.int_value, Keyring.list_value))
         def _set():
@@ -100,7 +100,7 @@ class TestXmlVault:
 
         _set()
 
-        data_in_file = xmltodict.parse(open(vault_file_new, "rb"))[XmlFileHandler.KEY]
+        data_in_file = xmltodict.parse(open(vault_file_new, "rb"))[XmlResource.KEY]
         logger.info(data_in_file)
         assert Keyring.string_value in data_in_file and data_in_file[Keyring.string_value] == "valid"
         # XML data is actually just strings. But we still want to support using XML files, but it will take some manual labour to get it working correctly.
@@ -108,7 +108,7 @@ class TestXmlVault:
         assert Keyring.list_value in data_in_file
 
     def test_read_from_xml_vault(self):
-        vault = varvault.from_vault(Keyring, "vault-from", XmlFileHandler(existing_vault), varvault.VaultFlags.vault_is_read_only())
+        vault = varvault.from_vault(Keyring, "vault-from", XmlResource(existing_vault), varvault.VaultFlags.vault_is_read_only())
 
         @vault.vaulter(input_keys=(Keyring.string_value, Keyring.int_value))
         def _get(string_value=None, int_value=None):

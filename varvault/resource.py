@@ -6,7 +6,7 @@ import threading
 from typing import Union, Dict, Any, AnyStr
 
 
-class BaseFileHandler(abc.ABC):
+class BaseResource(abc.ABC):
     def __init__(self, path: Union[AnyStr, Any], live_update=False, vault_is_read_only=False):
         self.lock = threading.Lock()
         self.raw_path = os.path.expanduser(os.path.expandvars(path))
@@ -150,7 +150,7 @@ class BaseFileHandler(abc.ABC):
 
 
 class ResourceNotFoundError(FileNotFoundError):
-    def __init__(self, msg, filehandler: BaseFileHandler):
+    def __init__(self, msg, filehandler: BaseResource):
         super(ResourceNotFoundError, self).__init__(msg)
         self.msg = msg
         self.filehandler = filehandler

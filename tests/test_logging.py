@@ -26,7 +26,7 @@ class TestLogging:
     def test_silent(self):
         temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
         vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.silent(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.silent(), varvault_resource_to=varvault.JsonResource(vault_file_new))
         vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
 
         @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
@@ -41,7 +41,7 @@ class TestLogging:
     def test_debug(self):
         temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
         vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_resource_to=varvault.JsonResource(vault_file_new))
         # Create and set a file to act as a StreamHandler for the logger object in varvault.
         # This way, we can easily capture stdout to a file and assert that the output is the expected
         vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
@@ -59,7 +59,7 @@ class TestLogging:
     def test_silent_and_debug(self):
         temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
         vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_resource_to=varvault.JsonResource(vault_file_new))
         # Create and set a file to act as a StreamHandler for the logger object in varvault.
         # This way, we can easily capture stdout to a file and assert that the output is the expected
         vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
@@ -82,7 +82,7 @@ class TestLogging:
             pass
         assert not os.path.exists(vault_log_file), f"{vault_log_file} still exists, weird"
 
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.disable_logger(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.disable_logger(), varvault_resource_to=varvault.JsonResource(vault_file_new))
         assert vault_new.logger is None, "logger object is not None; it should be"
         assert not os.path.exists(vault_log_file), f"{vault_log_file} exists after creating the vault when saying there shouldn't be a logger object"
 
@@ -94,7 +94,7 @@ class TestLogging:
 
     def test_remove_existing_log_file(self):
         vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
         def _doset():
@@ -102,7 +102,7 @@ class TestLogging:
         _doset()
         with open(vault_log_file) as f1:
             assert len(f1.readlines()) == 12, f"There should be exactly 12 lines in the log-file."
-        vault_from = varvault.from_vault(Keyring, "vault", varvault.JsonFilehandler(vault_file_new), varvault.VaultFlags.remove_existing_log_file())
+        vault_from = varvault.from_vault(Keyring, "vault", varvault.JsonResource(vault_file_new), varvault.VaultFlags.remove_existing_log_file())
         assert Keyring.key_valid_type_is_str in vault_from
         with open(vault_log_file) as f2:
             assert len(f2.readlines()) == 3, f"There should be exactly 3 lines in the logfile. It seems the log-file wasn't removed when the new vault was created from the existing vault."
@@ -125,7 +125,7 @@ class TestLogging:
             logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
             logger.addHandler(logging.FileHandler(filename=vault_log_file))
 
-            vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new), varvault_specific_logger=logger)
+            vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_resource_to=varvault.JsonResource(vault_file_new), varvault_specific_logger=logger)
             assert vault_new.logger.name == "pytest"  # The logger used for pytest here is called pytest
 
             @vault_new.vaulter(varvault.VaultFlags.silent(), return_keys=Keyring.key_valid_type_is_str)
@@ -142,7 +142,7 @@ class TestLogging:
     def test_no_error_logging(self):
         temp_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault-stream.log")
         vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault-vault.log")
-        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault_new = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.debug(), varvault_resource_to=varvault.JsonResource(vault_file_new))
         # Create and set a file to act as a StreamHandler for the logger object in varvault.
         # This way, we can easily capture stdout to a file and assert that the output is the expected
         vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))

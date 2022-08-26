@@ -6,7 +6,7 @@ from typing import *
 from .keyring import Keyring, Key
 from .minivault import MiniVault
 from .vaultstructs import VaultStructBase
-from .filehandlers import BaseFileHandler
+from .resource import BaseResource
 
 
 class AssignedByVaultEnum(enum.Enum):
@@ -53,9 +53,9 @@ def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inpu
     return asyncio.run(do(target, *inputs, **kwargs))
 
 
-def create_mv_from_resource(varvault_filehandler_from: BaseFileHandler, varvault_keyring: Type[Keyring], **extra_keys) -> MiniVault:
+def create_mv_from_resource(varvault_filehandler_from: BaseResource, varvault_keyring: Type[Keyring], **extra_keys) -> MiniVault:
     f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the {varvault_filehandler_from} passed."""
-    assert isinstance(varvault_filehandler_from, BaseFileHandler), f"'varvault_filehandler_from' must be an instance of {BaseFileHandler}, not {type(varvault_filehandler_from)}"
+    assert isinstance(varvault_filehandler_from, BaseResource), f"'varvault_filehandler_from' must be an instance of {BaseResource}, not {type(varvault_filehandler_from)}"
     assert issubclass(varvault_keyring, Keyring), f"'varvault_keyring' must be a subclass of {Keyring}, not {varvault_keyring} ({type(varvault_keyring)})"
     vault_file_data = varvault_filehandler_from.read()
 

@@ -34,7 +34,7 @@ class TestVault:
             pass
 
     def test_create_new_vault(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         @vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
         def _set_valid():
@@ -56,18 +56,18 @@ class TestVault:
             assert Keyring.key_valid_type_is_int not in vault
 
     def test_put(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
         mv = varvault.MiniVault({Keyring.key_valid_type_is_str: "value", Keyring.key_valid_type_is_int: 1})
         vault.vault.put(mv)
         assert Keyring.key_valid_type_is_str in vault
         assert Keyring.key_valid_type_is_int in vault
 
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
         vault.vault.put(Keyring.key_valid_type_is_str, "value")
         assert Keyring.key_valid_type_is_str in vault
 
     def test_create_from_vault(self):
-        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(existing_vault))
+        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(existing_vault))
         assert Keyring.key_valid_type_is_str in vault
         assert Keyring.key_valid_type_is_int in vault
         assert vault.get(Keyring.key_valid_type_is_str) == "valid"
@@ -76,7 +76,7 @@ class TestVault:
         assert Keyring.key_valid_type_is_str in d and Keyring.key_valid_type_is_int in d, "It appears that loading from the vault file has cleared the vault file unintentionally. This is very bad"
 
     def test_load_from_one_write_to_another(self):
-        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(existing_vault), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(existing_vault), varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         @vault.vaulter(varvault.VaultFlags.permit_modifications(), input_keys=Keyring.key_valid_type_is_str, return_keys=Keyring.key_valid_type_is_str)
         def mod(**kwargs):
@@ -95,10 +95,10 @@ class TestVault:
             key_valid_type_is_str = varvault.Key("key_valid_type_is_str")
             key_valid_type_is_int = varvault.Key("key_valid_type_is_int")
 
-        vault = varvault.from_vault(KeyringTemp, "from-vault", varvault.JsonFilehandler(existing_vault), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.from_vault(KeyringTemp, "from-vault", varvault.JsonResource(existing_vault), varvault_resource_to=varvault.JsonResource(vault_file_new))
 
     def test_permit_modifications(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
         vault.insert(Keyring.key_valid_type_is_str, "valid")
         try:
             @vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
@@ -118,7 +118,7 @@ class TestVault:
 
         assert vault.get(Keyring.key_valid_type_is_str) == "new-modified-value", f"Value for {Keyring.key_valid_type_is_str} is not what it should be"
 
-        new_vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(vault_file_new), varvault.VaultFlags.permit_modifications())
+        new_vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(vault_file_new), varvault.VaultFlags.permit_modifications())
 
         @new_vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
         def _set():
@@ -128,7 +128,7 @@ class TestVault:
         assert new_vault.get(Keyring.key_valid_type_is_str) == "new-modified-value-gen-2", f"Value for {Keyring.key_valid_type_is_str} is not what it should be"
 
     def test_create_readonly_vault(self):
-        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(existing_vault), varvault.VaultFlags.vault_is_read_only())
+        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(existing_vault), varvault.VaultFlags.vault_is_read_only())
         try:
             vault.insert(Keyring.key_valid_type_is_int, 1)
             pytest.fail("Insert: Somehow managed to insert a value into a vault that is supposed to be read-only")
@@ -147,13 +147,13 @@ class TestVault:
 
     def test_read_only_key_not_in_keyring(self):
         json.dump({Keyring.key_valid_type_is_str: "valid", Keyring.key_valid_type_is_int: 1, "temp": "this-should-not-be-in-the-vault"}, open(vault_file_new, "w"))
-        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(existing_vault), varvault.VaultFlags.vault_is_read_only())
+        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(existing_vault), varvault.VaultFlags.vault_is_read_only())
         assert varvault.Key("temp") not in vault, "Vault contains a key that should not be in the vault since if doesn't exist in the keyring"
         assert Keyring.key_valid_type_is_str in vault
         assert Keyring.key_valid_type_is_int in vault
 
     def test_insert_nonexistent_key(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
         temp_key = varvault.Key("temp_key")
         try:
             vault.insert(temp_key, "this-should-not-go-in")
@@ -164,29 +164,29 @@ class TestVault:
     def test_create_from_faulty_vault(self):
         this_key_doesnt_exist_in_keyring = varvault.Key("this_key_doesnt_exist_in_keyring", valid_type=str)
         try:
-            vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(faulty_existing_vault))
+            vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(faulty_existing_vault))
             pytest.fail("Managed to create a vault from a file that should be faulty")
         except Exception as e:
             logger.info(f"Expected error received; test passed: {e}")
 
         try:
-            vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(faulty_vault_key_missmatch))
+            vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(faulty_vault_key_missmatch))
             pytest.fail("Managed to create a vault from a file with a key not in keyring, and ignore_keys_not_in_keyring is False")
         except Exception as e:
             logger.info(f"Expected error received; test passed: {e}")
 
-        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(faulty_vault_key_missmatch),
+        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(faulty_vault_key_missmatch),
                                     varvault.VaultFlags.ignore_keys_not_in_keyring(),
-                                    varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+                                    varvault_resource_to=varvault.JsonResource(vault_file_new))
         assert this_key_doesnt_exist_in_keyring not in vault, f"Key {this_key_doesnt_exist_in_keyring} was found in the vault when it shouldn't be"
 
-        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonFilehandler(faulty_vault_key_missmatch),
-                                    varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new),
+        vault = varvault.from_vault(Keyring, "from-vault", varvault.JsonResource(faulty_vault_key_missmatch),
+                                    varvault_resource_to=varvault.JsonResource(vault_file_new),
                                     this_key_doesnt_exist_in_keyring=this_key_doesnt_exist_in_keyring)
         assert this_key_doesnt_exist_in_keyring in vault, f"Key {this_key_doesnt_exist_in_keyring} was not found in the vault when it should be added as an extra key"
 
     def test_insert_type_validation(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
         try:
             vault.insert(Keyring.key_valid_type_is_int, "this-should-not-work")
             assert False, "Somehow managed to insert a value for a key that should not work"
@@ -194,7 +194,7 @@ class TestVault:
             logger.info(f"Expected error received; test passed: {e}")
 
     def test_clean_return_keys(self):
-        vault_new = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault_new = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
         def _set():
@@ -213,7 +213,7 @@ class TestVault:
 
     def test_extra_keys(self):
         extra_key1 = varvault.Key("extra_key1", valid_type=dict)
-        vault_new = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new), extra_key1=varvault.Key("extra_key1", valid_type=dict))
+        vault_new = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new), extra_key1=varvault.Key("extra_key1", valid_type=dict))
 
         @vault_new.vaulter(return_keys=extra_key1)
         def _set_invalid():
@@ -238,7 +238,7 @@ class TestVault:
 
     def test_return_tuple_is_single_item(self):
         tuple_item = varvault.Key("tuple_item", valid_type=tuple)
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new), tuple_item=tuple_item)
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new), tuple_item=tuple_item)
 
         @vault.vaulter(varvault.VaultFlags.return_tuple_is_single_item(), return_keys=tuple_item)
         def _set():
@@ -248,7 +248,7 @@ class TestVault:
         assert tuple_item in vault, f"Flag: No {tuple_item} found in vault"
         assert vault.get(tuple_item) == (1, 2, 3), "Flag: missmatch"
 
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new), tuple_item=tuple_item)
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new), tuple_item=tuple_item)
 
         @vault.vaulter(return_keys=tuple_item)
         def _set():
@@ -259,8 +259,8 @@ class TestVault:
         assert vault.get(tuple_item) == (1, 2, 3), "No flag: Missmatch"
 
     def test_split_return_keys(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
-        vault_secondary = varvault.create_vault(Keyring, "vault-secondary", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new_secondary))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
+        vault_secondary = varvault.create_vault(Keyring, "vault-secondary", varvault_resource_to=varvault.JsonResource(vault_file_new_secondary))
 
         @vault.vaulter(varvault.VaultFlags.split_return_keys(), return_keys=Keyring.key_valid_type_is_str)
         @vault_secondary.vaulter(varvault.VaultFlags.split_return_keys(), return_keys=Keyring.key_valid_type_is_int)
@@ -275,7 +275,7 @@ class TestVault:
         assert vault_secondary.get(Keyring.key_valid_type_is_int) == 1
 
     def test_return_key_can_be_missing(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def _set_failed():
@@ -309,7 +309,7 @@ class TestVault:
         assert vault.get(Keyring.key_valid_type_is_str) == "valid"
 
     def test_validate_types_in_minivault_return_values(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def _set_failed():
@@ -379,7 +379,7 @@ class TestVault:
             int_must_be_even_number = varvault.Key("int_must_be_even_number", valid_type=int, validators=(must_be_even, cannot_be_negative))
             no_dashes_in_str = varvault.Key("no_dashes_in_str", valid_type=str, validators=no_dashes)
 
-        vault = varvault.create_vault(KeyringKeyValidationFunction, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(KeyringKeyValidationFunction, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         try:
             vault.insert(KeyringKeyValidationFunction.int_must_be_even_number, 1)
@@ -407,7 +407,7 @@ class TestVault:
         assert KeyringKeyValidationFunction.int_must_be_even_number in vault and vault.get(KeyringKeyValidationFunction.int_must_be_even_number) == 4
 
     def test_add_minivault_function(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def insert():
@@ -435,14 +435,14 @@ class TestVault:
         except OSError:
             pass
         assert not os.path.exists(temp_dir), f"Dir {temp_dir} already exists. It's supposed to not exist before we create the vault to make sure varvault creates the required directories"
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(f"{temp_dir}/vault.json"))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(f"{temp_dir}/vault.json"))
         vault.insert(Keyring.key_valid_type_is_str, "valid")
         vault.insert(Keyring.key_valid_type_is_int, 1)
         data = json.load(open(vault_file))
         assert Keyring.key_valid_type_is_str in data and Keyring.key_valid_type_is_int in data
 
     def test_get_with_default(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         vault.insert(Keyring.key_valid_type_is_str, "valid")
         assert Keyring.key_valid_type_is_int not in vault
@@ -462,7 +462,7 @@ class TestVault:
         assert v == 2
 
     def test_get_multiple_with_input_key_can_be_missing_flag(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         vault.insert(Keyring.key_valid_type_is_str, "valid")
 
@@ -499,7 +499,7 @@ class TestVault:
             os.environ["DIR"] = "~/.varvault-test-dir"
             os.environ["VAULT_FILE"] = "vault.json"
 
-            fh = varvault.JsonFilehandler("$DIR/$VAULT_FILE")
+            fh = varvault.JsonResource("$DIR/$VAULT_FILE")
             assert fh.exists()
         finally:
             try:
@@ -518,11 +518,11 @@ class TestVault:
     def test_create_vault_produces_valid_json(self):
         assert not os.path.exists(vault_file_new)
         # Creating a vault from scratch should produce a valid but empty JSON file
-        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
         assert json.load(open(vault_file_new)) == {}
 
     def test_input_keys_as_kw_vars_only(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.use_signature_for_input_keys(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        vault = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.use_signature_for_input_keys(), varvault_resource_to=varvault.JsonResource(vault_file_new))
 
         vault.insert(Keyring.key_valid_type_is_str, "valid")
         vault.insert(Keyring.key_valid_type_is_int, 1)

@@ -1,9 +1,9 @@
 import os
 import json
 
-from typing import Any, Union, Dict, TextIO, AnyStr
+from typing import Dict, TextIO, AnyStr
 
-from .filehandlers import BaseFileHandler
+from .resource import BaseResource
 
 from .keyring import Key
 from .keyring import Keyring
@@ -40,7 +40,7 @@ def clear_logs():
         os.remove(f)
 
 
-class JsonFilehandler(BaseFileHandler):
+class JsonResource(BaseResource):
 
     def __init__(self, path: AnyStr, live_update=False, vault_is_read_only=False, create_file_on_live_update=False):
         """
@@ -55,7 +55,7 @@ class JsonFilehandler(BaseFileHandler):
         path = os.path.expanduser(os.path.expandvars(path))
         self.file_io = None
         self.create_file_on_live_update = create_file_on_live_update
-        super(JsonFilehandler, self).__init__(path, live_update, vault_is_read_only)
+        super(JsonResource, self).__init__(path, live_update, vault_is_read_only)
 
     @property
     def state(self):

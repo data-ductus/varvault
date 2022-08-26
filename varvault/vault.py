@@ -9,7 +9,7 @@ import traceback
 from typing import *
 from threading import Lock
 
-from .filehandlers import BaseFileHandler
+from .resource import BaseResource
 from .keyring import Keyring, Key
 from .logger import get_logger, configure_logger
 from .minivault import MiniVault
@@ -19,12 +19,12 @@ from .vaultflags import VaultFlags
 
 class VarVault(object):
     class Vault(dict):
-        def __init__(self, vault_filehandler: BaseFileHandler = None, vault_is_read_only=False, live_update=False):
+        def __init__(self, vault_resource: BaseResource = None, vault_is_read_only=False, live_update=False):
             super(VarVault.Vault, self).__init__()
             self.writable_args = dict()
             self.vault_is_read_only = vault_is_read_only
             self.live_update = live_update
-            self.filehandler = vault_filehandler
+            self.filehandler = vault_resource
 
         def __setitem__(self, key, value):
             data = {key: value}
@@ -69,8 +69,8 @@ class VarVault(object):
                  varvault_keyring: Type[Keyring],
                  varvault_vault_name: str,
                  *flags: VaultFlags,
-                 varvault_filehandler_from: BaseFileHandler = None,
-                 varvault_filehandler_to: BaseFileHandler = None,
+                 varvault_resource_from: BaseResource = None,
+                 varvault_resource_to: BaseResource = None,
                  varvault_specific_logger: logging.Logger = None,
                  **extra_keys):
         f"""
@@ -79,15 +79,15 @@ class VarVault(object):
         :param varvault_keyring: The {Keyring} class used for this vault.  
         :param varvault_vault_name: The name of the vault. This is used when creating a logfile for logging information to. 
         :param flags: A set of flags used to tweak the behavior of the vault object. See {VaultFlags} for what flags can be used and what they do.   
-        :param varvault_filehandler_from: Optional. The name of the file to load a vault from.  
-        :param varvault_filehandler_to: Optional. The name of a file to write data in the vault to.
+        :param varvault_resource_from: Optional. The resource to load a vault from.  
+        :param varvault_resource_to: Optional. The resource to write data in the vault to.
         :param varvault_specific_logger: Optional. A specific logger to log to in-case you do not want to use the built-in logger in varvault.  
         :param extra_keys: Optional. A kwargs-object with extra keys that are not defined in the {varvault_keyring}. This can be useful when you have a lot of keys that you might 
          want to handle in a programmatic sense rather than in a pre-defined sense. 
         """
         assert issubclass(varvault_keyring, Keyring), f"'keyring' must be a subclass of {Keyring}"
-        assert varvault_filehandler_from is None or isinstance(varvault_filehandler_from, BaseFileHandler), f"'varvault_filehandler_from' must be of type {BaseFileHandler}, or {None}, not {type(varvault_filehandler_from)}"
-        assert varvault_filehandler_to is None or isinstance(varvault_filehandler_to, BaseFileHandler), f"'varvault_filehandler_to' must be of type {BaseFileHandler}, or {None}, not {type(varvault_filehandler_to)}"
+        assert varvault_resource_from is None or isinstance(varvault_resource_from, BaseResource), f"'varvault_resource_from' must be of type {BaseResource}, or {None}, not {type(varvault_resource_from)}"
+        assert varvault_resource_to is None or isinstance(varvault_resource_to, BaseResource), f"'varvault_resource_to' must be of type {BaseResource}, or {None}, not {type(varvault_resource_to)}"
         assert not VaultFlags.flag_is_set(VaultFlags.clean_return_keys(), *flags), f"You really should not set {VaultFlags.clean_return_keys()} " \
                                                                                    f"to the vault itself as that would be an extremely bad idea."
         for key_name, key in extra_keys.items():
@@ -104,12 +104,12 @@ class VarVault(object):
         self.flags: set = set(flags)
         self.vault_is_read_only = VaultFlags.flag_is_set(VaultFlags.vault_is_read_only(), *self.flags)
         self.live_update = VaultFlags.flag_is_set(VaultFlags.live_update(), *self.flags)
-        self.filehandler_from: BaseFileHandler = varvault_filehandler_from
-        self.filehandler_to: BaseFileHandler = varvault_filehandler_to
-        if not self.filehandler_from.resource:
-            self.filehandler_from.create_resource()
-        if not self.filehandler_to.resource:
-            self.filehandler_to.create_resource()
+        self.resource_from: BaseResource = varvault_resource_from
+        self.resource_to: BaseResource = varvault_resource_to
+        if not self.resource_from.resource:
+            self.resource_from.create_resource()
+        if not self.resource_to.resource:
+            self.resource_to.create_resource()
 
         self.lock = Lock()
 
@@ -118,12 +118,12 @@ class VarVault(object):
         self.keys.update(extra_keys)
 
         # Create the inner vault
-        self._inner_vault = self.Vault(varvault_filehandler_to, vault_is_read_only=self.vault_is_read_only, live_update=self.live_update)
+        self._inner_vault = self.Vault(varvault_resource_to, vault_is_read_only=self.vault_is_read_only, live_update=self.live_update)
 
-        if self.filehandler_to:
-            self.log(f"Vault writing data to '{self.filehandler_to.path}'", level=logging.INFO)
+        if self.resource_to:
+            self.log(f"Vault writing data to '{self.resource_to.path}'", level=logging.INFO)
         if self.live_update:
-            self.log(f"Vault doing live updates from '{self.filehandler_from.path}' whenever the vault is accessed.", level=logging.INFO)
+            self.log(f"Vault doing live updates from '{self.resource_from.path}' whenever the vault is accessed.", level=logging.INFO)
 
     def __contains__(self, key: Key):
         self._assert_key_is_correct_type(key, msg=f"{self.__contains__.__name__} may only be used with a {Key}-object, not {type(key)}")
@@ -490,11 +490,11 @@ class VarVault(object):
 
     def _try_reload_from_file(self):
         """Can be used to reload from a file if changes has been made to it since it was read last time."""
-        if self.filehandler_from and self.live_update:
-            if not self.filehandler_from.resource_has_changed():
+        if self.resource_from and self.live_update:
+            if not self.resource_from.resource_has_changed():
                 return
 
-            mini = MiniVault(self.filehandler_from.read())
+            mini = MiniVault(self.resource_from.read())
             self.vault.put(mini)
 
     def _configure_log_levels_based_on_flags(self, *all_flags):
