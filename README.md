@@ -128,7 +128,10 @@ if __name__ == "__main__":
    In order to re-create the same vault again simply do this: 
    ```python
    import varvault
-   
+
+   class Keyring(varvault.Keyring):
+       arg1 = varvault.Key("arg1")
+       arg2 = varvault.Key("arg2")
       
    vault = varvault.from_vault(Keyring,
                                "example-vault",
@@ -139,15 +142,26 @@ if __name__ == "__main__":
    (see `varvault.VaultFlags.permit_modifications`) in-case you are planning to write the same
    arguments to the vault again. 
 
-Conclusion. This flow demonstrates what this functionality can be used for. With this vault, the context for where
-a function executes doesn't matter as long as the keys the function needs have been assigned in the vault and the
+## Conclusion
+This README demonstrates what this functionality can be used for. With this vault, the context for where
+a function executes doesn't matter as long as the keys the function require have been assigned in the vault and the
 functions exists in the scope. The functions become building blocks that you can call regardless of context provided
 the above criteria have been met. You don't need to clutter your function calls with tons of input variables because
 all of that is handled for you by the vault and the decorator. If you use it correctly, you can end up with
 functions that on the surface appears to not use any arguments or pass any return variables at all. This makes the main
-body of your code clean and easy to follow. You can then use the Keyring to see where your keys are
-actually being used. By saving arguments to a file, it allows you to keep parts of the context the code ran 
-in previously. This can be very useful when deploying something which then has to be un-deployed at a later time that 
-isn't necessarily running in the same process as before. This adds an extra layer similar to environment variables 
-that works slightly differently and exclusively in Python. Since the arguments are saved to a JSON file, anything that
-can parse JSON can obviously use the data as they see fit. 
+body of your code clean and easy to follow. 
+
+By using this functionality, you can create a vault that can be used in any context, and you can use the vault to
+store variables that are used in multiple functions. This is very useful when you have a lot of functions that need to
+use the same variables at different depths of your code. 
+
+Adding new input variables or return variables to a function is very easy, because you don't need to think about how
+the function is used, as long as it is used in the correct context. Varvault handles all input variables and return 
+variables for you, simply within the context of the function itself. As long as variables already exist in the vault, 
+passing a variable to a function is simply a matter of adding the variable to the function signature as a keyword argument. 
+
+The keys in the Keyring allows you to see where your keys are actually being used. By saving arguments to a file or database, 
+it allows you to keep parts of the context the code ran in previously. This can be very useful when deploying something which 
+then has to be un-deployed at a later time that isn't necessarily running in the same process as before. This adds an extra
+layer similar to environment variables that works slightly differently and exclusively in Python. Since the arguments
+can be saved to something like a JSON file, anything that can parse JSON can obviously use the data as they see fit. 

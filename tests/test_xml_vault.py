@@ -11,6 +11,7 @@ existing_vault = f"{DIR}/existing-vault.xml"
 
 
 class XmlFileHandler(varvault.BaseFileHandler):
+
     KEY = "VAULT"
 
     def __init__(self, path: str, live_update=False, file_is_read_only=False):
@@ -21,40 +22,42 @@ class XmlFileHandler(varvault.BaseFileHandler):
     def resource(self) -> TextIO:
         return self.file_io
 
-    def create_resource(self, path: Union[AnyStr, Any]) -> None:
-        if path and self.live_update and not os.path.exists(path):
-            self.file_io = None
-        elif path and not os.path.exists(path):
-            # Create the file; It doesn't exist. Try to create the folder first.
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            self.file_io = open(path, "w")
-            self.file_io.close()
-        elif path and os.path.exists(path):
-            # The file already exists; Just read from it
-            self.file_io = open(path)
-            self.file_io.close()
-        else:
-            raise NotImplementedError("This is not supported")
+    def create_resource(self) -> None:
+        path = self.path
+        assert path, "Path is not defined"
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        def create():
+            file_io = open(path, "w")
+            file_io.close()
+            return file_io
+
+        self.file_io = None
+        if self.exists():
+            self.file_io = open(path, "r+")
+        elif not self.live_update:
+            self.file_io = create()
 
     @property
-    def path(self) -> Union[AnyStr, Any]:
-        return self.raw_path
-
-    def kv_pair_can_be_written(self, obj: Dict) -> bool:
-        obj = {self.KEY: obj}
-        try:
-            xmltodict.unparse(obj, pretty=True)
-            return True
-        except:
-            return False
-
-    def hash(self):
+    def state(self):
         import hashlib
         hash_md5 = hashlib.md5()
         with open(self.path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
+
+    @property
+    def path(self) -> Union[AnyStr, Any]:
+        return self.raw_path
+
+    def writable(self, obj: Dict) -> bool:
+        obj = {self.KEY: obj}
+        try:
+            xmltodict.unparse(obj, pretty=True)
+            return True
+        except:
+            return False
 
     def exists(self) -> bool:
         return os.path.exists(self.path)

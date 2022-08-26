@@ -17,7 +17,7 @@ class VaultStructDict(varvault.VaultStructDictBase):
         pass
 
     @classmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
+    def create(cls, vault_key, vault_value):
         obj = VaultStructDict(**vault_value)
         return obj
 
@@ -37,7 +37,7 @@ class VaultStructList(varvault.VaultStructListBase):
         pass
 
     @classmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
+    def create(cls, vault_key, vault_value):
         obj = VaultStructList(*vault_value)
         return obj
 
@@ -54,7 +54,7 @@ class VaultStructString(varvault.VaultStructStringBase):
         pass
 
     @classmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
+    def create(cls, vault_key, vault_value):
         obj = VaultStructString(string_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-a-string")
         return obj
 
@@ -71,7 +71,7 @@ class VaultStructFloat(varvault.VaultStructFloatBase):
         pass
 
     @classmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
+    def create(cls, vault_key, vault_value):
         obj = VaultStructFloat(float_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-a-float")
         return obj
 
@@ -88,7 +88,7 @@ class VaultStructInt(varvault.VaultStructIntBase):
         pass
 
     @classmethod
-    def build_from_vault_key(cls, vault_key, vault_value):
+    def create(cls, vault_key, vault_value):
         obj = VaultStructInt(int_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-an-int")
         return obj
 

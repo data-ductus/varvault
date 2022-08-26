@@ -90,7 +90,7 @@ class Keyring(object):
     Note that you never have to instantiate this class (i.e. create an object), you just have to create a class that inherits from this class."""
 
     @classmethod
-    def get_keys_in_keyring(cls) -> Dict[str, Key]:
+    def get_keys(cls) -> Dict[str, Key]:
         """Returns all keys in the keyring as a dict on this format: Dict[str: Key]"""
         keys = dict()
         for key, value in cls.__dict__.items():
@@ -107,4 +107,4 @@ class Keyring(object):
             return cls.__dict__[key_str]
         except KeyError:
             raise KeyError(f"Failed to get matching key for string: {key_str}. "
-                           f"It doesn't appear to exist in the keyring: {cls.get_keys_in_keyring().values()}")
+                           f"It doesn't appear to exist in the keyring: {cls.get_keys().values()}")

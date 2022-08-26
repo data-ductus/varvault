@@ -1,3 +1,4 @@
+import inspect
 import json
 import threading
 
@@ -427,8 +428,11 @@ class TestVault:
 
         try:
             os.remove(vault_file)
+        except OSError:
+            pass
+        try:
             os.removedirs(temp_dir)
-        except:
+        except OSError:
             pass
         assert not os.path.exists(temp_dir), f"Dir {temp_dir} already exists. It's supposed to not exist before we create the vault to make sure varvault creates the required directories"
         vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(f"{temp_dir}/vault.json"))
@@ -511,4 +515,78 @@ class TestVault:
         assert not os.path.exists(dir_expanded), f"The directory {dir_expanded} still exists and it shouldn't. You may want to delete it manually"
         logger.info("Done")
 
+    def test_create_vault_produces_valid_json(self):
+        assert not os.path.exists(vault_file_new)
+        # Creating a vault from scratch should produce a valid but empty JSON file
+        vault = varvault.create_vault(Keyring, "vault", varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+        assert json.load(open(vault_file_new)) == {}
 
+    def test_input_keys_as_kw_vars_only(self):
+        vault = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.use_signature_for_input_keys(), varvault_filehandler_to=varvault.JsonFilehandler(vault_file_new))
+
+        vault.insert(Keyring.key_valid_type_is_str, "valid")
+        vault.insert(Keyring.key_valid_type_is_int, 1)
+
+        @vault.vaulter()
+        def fn_pure_kw_only(*, key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
+            assert key_valid_type_is_str == "valid"
+            assert key_valid_type_is_int == 1
+
+        fn_pure_kw_only()
+
+        @vault.vaulter()
+        def fn_pure_kw_or_positional(key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
+            assert key_valid_type_is_str == "valid"
+            assert key_valid_type_is_int == 1
+
+        fn_pure_kw_or_positional()
+
+        @vault.vaulter(input_keys=Keyring.key_valid_type_is_str)
+        def fn_mixed(key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
+            assert key_valid_type_is_str == "valid"
+            assert key_valid_type_is_int == 1
+
+        fn_mixed()
+
+        @vault.vaulter()
+        def fn_pure_with_args(a1, key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
+            assert a1 == 3.14
+            assert key_valid_type_is_str == "valid"
+            assert key_valid_type_is_int == 1
+
+        fn_pure_with_args(3.14)
+
+        @vault.vaulter(input_keys=Keyring.key_valid_type_is_str)
+        def fn_mixed_with_args(a1, key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
+            assert a1 == 3.14
+            assert key_valid_type_is_str == "valid"
+            assert key_valid_type_is_int == 1
+
+        fn_mixed_with_args(3.14)
+
+        try:
+            @vault.vaulter()
+            def fn_with_typo(key_valid_type_is_string=varvault.AssignedByVault, key_valid_type_is_integer=varvault.AssignedByVault):  # Note the typos in the key names
+                assert key_valid_type_is_string is None
+                assert key_valid_type_is_integer is None
+            pytest.fail("We managed to get this far, which shouldn't be possible")
+        except AssertionError:
+            pass
+
+        try:
+            @vault.vaulter()
+            def fn_faulty_default_assignment(key_valid_type_is_str=None, key_valid_type_is_int=None):
+                assert key_valid_type_is_str == "valid"
+                assert key_valid_type_is_int == 1
+            pytest.fail("We managed to get this far, which shouldn't be possible")
+        except AssertionError as e:
+            pass
+
+        try:
+            @vault.vaulter()
+            def fn_mixed_faulty_default_assignment(key_valid_type_is_str=None, key_valid_type_is_integer=varvault.AssignedByVault):
+                assert key_valid_type_is_str == "valid"
+                assert key_valid_type_is_integer == 1
+            pytest.fail("We managed to get this far, which shouldn't be possible")
+        except AssertionError as e:
+            pass
