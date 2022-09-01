@@ -4,6 +4,8 @@ import re
 
 from setuptools import setup
 
+import varvault
+
 # The directory containing this file
 HERE = pathlib.Path(__file__).parent
 
@@ -13,9 +15,12 @@ README = pathlib.Path(f"{HERE}/README.md").read_text()
 # Version handling
 # A good way to tell if we are backwards compatible is to run the test suite and if the tests pass without requiring any changes, we can pretty safely assume we are backwards compatible.
 MAJOR = 4  # Change this if the previous MAJOR is incompatible with this build. Set MINOR and PATCH to 0
-MINOR = 0  # Change this if the functionality has changed, but we are still backwards compatible with previous MINOR versions. Set PATCH to 0
-PATCH = 1  # Change this is if we are fixing a bug that doesn't change the functionality. If a bug-fix has caused functionality to be changed, see MINOR instead
+MINOR = 1  # Change this if the functionality has changed, but we are still backwards compatible with previous MINOR versions. Set PATCH to 0
+PATCH = 0  # Change this is if we are fixing a bug that doesn't change the functionality. If a bug-fix has caused functionality to be changed, see MINOR instead
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
+
+
+assert varvault.__version__ == VERSION, f"Version mismatch: {varvault.__version__} != {VERSION}"
 
 
 def find_todos_for_version_in_code():

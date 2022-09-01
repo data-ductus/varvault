@@ -6,6 +6,35 @@ from .validator import validator
 
 
 class Key(str):
+    class Usages:
+        def __init__(self):
+            self._as_input = set()
+            self._as_return = set()
+
+        def add_input(self, func):
+            assert callable(func)
+
+            name = f"{func.__module__}.{func.__name__}"
+            self._as_input.add(name)
+
+        def add_return(self, func):
+            assert callable(func)
+
+            name = f"{func.__module__}.{func.__name__}"
+            self._as_return.add(name)
+
+        @property
+        def as_input(self) -> List[AnyStr]:
+            l = list(self._as_input)
+            l.sort()
+            return l
+
+        @property
+        def as_return(self) -> List[AnyStr]:
+            l = list(self._as_return)
+            l.sort()
+            return l
+
     def __new__(cls, key_name, valid_type: Type = None, can_be_none: bool = False, validators: Union[List[Callable], Tuple[Callable, ...], Callable] = None):
         f"""
         Creates a key that is based on a str-object. 
@@ -20,6 +49,7 @@ class Key(str):
         obj.key_name = key_name
         obj.can_be_none = can_be_none
         obj.valid_type = valid_type
+        obj._usages = Key.Usages()
         obj.validators = cls._convert_validators_to_tuple(validators)
         return obj
 
@@ -34,6 +64,10 @@ class Key(str):
 
     def __hash__(self):
         return hash(self.key_name)
+
+    @property
+    def usages(self) -> Key.Usages:
+        return self._usages
 
     @classmethod
     def _convert_validators_to_tuple(cls, validators):

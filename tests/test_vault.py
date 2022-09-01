@@ -590,3 +590,66 @@ class TestVault:
             pytest.fail("We managed to get this far, which shouldn't be possible")
         except AssertionError as e:
             pass
+
+    def test_create_vault_no_resource(self):
+        vault = varvault.create_vault(Keyring, "vault")
+        assert vault.resource_from is None
+        assert vault.resource_to is None
+        vault.insert(Keyring.key_valid_type_is_str, "valid")
+        vault.insert(Keyring.key_valid_type_is_int, 1)
+        assert vault.get(Keyring.key_valid_type_is_str) == "valid"
+        assert vault.get(Keyring.key_valid_type_is_int) == 1
+
+    def test_create_vault_with_json_resource_relative_path(self):
+        try:
+            vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(os.path.basename(vault_file_new)))
+            assert vault.resource_to
+            assert vault.resource_to.path == os.path.basename(vault_file_new)
+        finally:
+            os.remove(os.path.basename(vault_file_new))
+
+    def test_key_usages(self):
+        class KeyringTemporary(varvault.Keyring):
+            k1 = varvault.Key("k1")
+            k2 = varvault.Key("k2")
+            k3 = varvault.Key("k3")
+        vault = varvault.create_vault(KeyringTemporary, "vault")
+        @vault.vaulter(return_keys=(KeyringTemporary.k1, KeyringTemporary.k2, KeyringTemporary.k3))
+        def _set():
+            return 1, "valid", 3.14
+
+        try:
+            vault.get(KeyringTemporary.k1)
+            pytest.fail("We managed to get this far, which shouldn't be possible")
+        except AssertionError as e:
+            logger.info(e.args[0])
+            assert "test_vault._set" in e.args[0]
+
+        _set()
+
+        @vault.vaulter(input_keys=(KeyringTemporary.k1, KeyringTemporary.k2))
+        def _use_first(k1=varvault.AssignedByVault, k2=varvault.AssignedByVault):
+            assert k1 == 1
+            assert k2 == "valid"
+
+        _use_first()
+
+        @vault.vaulter(input_keys=KeyringTemporary.k3)
+        def _use_second(k3=varvault.AssignedByVault):
+            assert k3 == 3.14
+
+        _use_second()
+
+        @vault.vaulter(varvault.VaultFlags.permit_modifications(), input_keys=KeyringTemporary.k3, return_keys=KeyringTemporary.k3)
+        def _override(k3):
+            assert k3 == 3.14
+            return k3 * 2
+        _override()
+
+        assert vault.get(KeyringTemporary.k3) == 6.28
+        assert KeyringTemporary.k1.usages.as_input == ['test_vault._use_first']
+        assert KeyringTemporary.k2.usages.as_input == ['test_vault._use_first']
+        assert KeyringTemporary.k3.usages.as_input == ['test_vault._override', 'test_vault._use_second']
+        assert KeyringTemporary.k1.usages.as_return == ['test_vault._set']
+        assert KeyringTemporary.k2.usages.as_return == ['test_vault._set']
+        assert KeyringTemporary.k3.usages.as_return == ['test_vault._override', 'test_vault._set']

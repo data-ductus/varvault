@@ -106,9 +106,10 @@ class VarVault(object):
         self.live_update = VaultFlags.flag_is_set(VaultFlags.live_update(), *self.flags)
         self.resource_from: BaseResource = varvault_resource_from
         self.resource_to: BaseResource = varvault_resource_to
-        if not self.resource_from.resource:
+
+        if self.resource_from and not self.resource_from.resource:
             self.resource_from.create_resource()
-        if not self.resource_to.resource:
+        if self.resource_to and not self.resource_to.resource:
             self.resource_to.create_resource()
 
         self.lock = Lock()
@@ -149,7 +150,10 @@ class VarVault(object):
     # =========================================================================================================================================
     # vaulter
     # =========================================================================================================================================
-    def vaulter(self, *flags: VaultFlags, input_keys: Union[Key, list, tuple] = None, return_keys: Union[Key, list, tuple] = None) -> Callable:
+    def vaulter(self,
+                *flags: VaultFlags,
+                input_keys: Union[Key, List[Key, ...], Tuple[Key, ...]] = None,
+                return_keys: Union[Key, List[Key, ...], Tuple[Key, ...]] = None) -> Callable:
         f"""
         Decorator to define a function as a vaulted function.
         A vaulted function works a lot different to a normal function.
@@ -186,6 +190,8 @@ class VarVault(object):
 
         def wrap_outer(func):
             func_module_name = f"{func.__module__}.{func.__name__}"
+            [key.usages.add_input(func) for key in input_keys]
+            [key.usages.add_return(func) for key in return_keys]
             if VaultFlags.flag_is_set(VaultFlags.use_signature_for_input_keys(), *all_flags):
                 self._vaulter__populate_input_keys_from_signature(func, input_keys)
 
@@ -238,7 +244,7 @@ class VarVault(object):
         return wrap_outer
 
     def _vaulter__pre_call(self, input_keys, func_module_name, *all_flags, **kwargs):
-        input_kwargs = self._vaulter__build_input_var_keys(input_keys, *all_flags, **kwargs)
+        input_kwargs = self._vaulter__build_input_vars(input_keys, *all_flags, **kwargs)
         kwargs.update(input_kwargs)
         self._configure_log_levels_based_on_flags(*all_flags)
 
@@ -301,7 +307,7 @@ class VarVault(object):
         if faulty_params:
             raise AssertionError(f"Errors found in the signature: {faulty_params}")
 
-    def _vaulter__build_input_var_keys(self, input_keys, *all_flags, **kwargs):
+    def _vaulter__build_input_vars(self, input_keys, *all_flags, **kwargs):
         mini = self.get_multiple(input_keys, *all_flags)
 
         assert len(input_keys) == len(mini) or VaultFlags.flag_is_set(VaultFlags.input_key_can_be_missing(), *all_flags), \
@@ -449,7 +455,8 @@ class VarVault(object):
                 for key in keys:
                     assert key in self, f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. " \
                                         f"You can set the flag '{VaultFlags.input_key_can_be_missing()}' to avoid this, " \
-                                        f"in which case the value will be {None}, or make sure a value is mapped to it."
+                                        f"in which case the value will be {None}, or make sure a value is mapped to it. " \
+                                        f"Known functions/methods where this key is used as a return key: {key.usages.as_return}"
             [mini.update({key: self.vault.get(key)}) for key in keys if key in self]
             self._reset_log_levels()
         return mini

@@ -1,3 +1,6 @@
+__version__ = "4.1.0"
+
+
 import os
 import json
 
@@ -76,7 +79,9 @@ class JsonResource(BaseResource):
         """Creates the resource self.file_io for this handler which we'll use to read and write to."""
         path = self.path
         assert path, "Path is not defined"
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dir = os.path.dirname(path)
+        if dir:
+            os.makedirs(dir, exist_ok=True)
 
         def create():
             file_io = open(path, "w")
