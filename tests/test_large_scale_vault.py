@@ -119,7 +119,9 @@ class TestLargeScaleVault:
             pass
 
     def test_load_from_large_vault(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonResource(large_vault_file), varvault.VaultFlags.remove_existing_log_file(), varvault.VaultFlags.remove_existing_log_file(), varvault_resource_to=varvault.JsonResource(vault_file_new))
+        resource_mv = varvault.JsonResource(large_vault_file, mode="r").create_mv(**KeyringLargeScale.get_keys())
+        vault = varvault.create(varvault.Flags.remove_existing_log_file, keyring=KeyringLargeScale, resource=varvault.JsonResource(vault_file_new, "w"))
+        vault.insert_minivault(resource_mv)
         logger.info("Created the vault from file")
         # We load from existing and write to new, so just check that the new file contains the correct data
         contents = json.load(open(vault_file_new))
@@ -167,7 +169,9 @@ class TestLargeScaleVault:
         assert KeyringLargeScale.result in contents
 
     def test_get_multiple(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonResource(large_vault_file), varvault.VaultFlags.remove_existing_log_file(), varvault_resource_to=varvault.JsonResource(vault_file_new))
+        resource_mv = varvault.JsonResource(large_vault_file, mode="r").create_mv(**KeyringLargeScale.get_keys())
+        vault = varvault.create(varvault.Flags.remove_existing_log_file, keyring=KeyringLargeScale, resource=varvault.JsonResource(vault_file_new, "w"))
+        vault.insert_minivault(resource_mv)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.start_time,
@@ -186,7 +190,9 @@ class TestLargeScaleVault:
         assert len([key for key in keys if key not in vars]) == 0, f"Keys are missing in vars: {[key for key in keys if key not in vars]}"
 
     def test_get_via_vaulter(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonResource(large_vault_file), varvault.VaultFlags.remove_existing_log_file(), varvault_resource_to=varvault.JsonResource(vault_file_new))
+        resource_mv = varvault.JsonResource(large_vault_file, mode="r").create_mv(**KeyringLargeScale.get_keys())
+        vault = varvault.create(varvault.Flags.remove_existing_log_file, keyring=KeyringLargeScale, resource=varvault.JsonResource(vault_file_new, "w"))
+        vault.insert_minivault(resource_mv)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.cpus_per_container,
@@ -237,9 +243,9 @@ class TestLargeScaleVault:
         _get()
 
     def test_get_threaded(self):
-        # Note the use of varvault.VaultFlags.silent() here. It will speed up the processing significantly.
-        # It brings processing down from 1.6 seconds to 0.16 seconds for 500 parallel requests.
-        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonResource(large_vault_file), varvault.VaultFlags.silent(), varvault.VaultFlags.remove_existing_log_file(), varvault_resource_to=varvault.JsonResource(vault_file_new))
+        resource_mv = varvault.JsonResource(large_vault_file, mode="r").create_mv(**KeyringLargeScale.get_keys())
+        vault = varvault.create(varvault.Flags.remove_existing_log_file, keyring=KeyringLargeScale, resource=varvault.JsonResource(vault_file_new, "w"))
+        vault.insert_minivault(resource_mv)
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,
                 KeyringLargeScale.cpus_per_container,
@@ -284,7 +290,9 @@ class TestLargeScaleVault:
                 KeyringLargeScale.result,
                 ]
 
-        @vault.vaulter(input_keys=keys)
+        # Note the use of varvault.Flags.silent here. It will speed up the processing significantly.
+        # It brings processing down from 3 seconds to 0.6 seconds for 500 parallel requests.
+        @vault.vaulter(varvault.Flags.silent, input_keys=keys)
         async def _get(thread_id, **kwargs):
             assert isinstance(thread_id, int)
             assert len([k for k in keys if k in kwargs]) == len(keys)
@@ -297,7 +305,9 @@ class TestLargeScaleVault:
         logger.info(f"Time (seconds): {time.time() - start}")
 
     def test_live_update(self):
-        vault = varvault.from_vault(KeyringLargeScale, "vault", varvault.JsonResource(vault_file_new, live_update=True), varvault.VaultFlags.live_update(), varvault.VaultFlags.remove_existing_log_file())
+        resource_mv = varvault.JsonResource(large_vault_file, mode="r").create_mv(**KeyringLargeScale.get_keys())
+        vault = varvault.create(varvault.Flags.remove_existing_log_file, keyring=KeyringLargeScale, resource=varvault.JsonResource(vault_file_new, "w+"))
+        vault.insert_minivault(resource_mv)
 
         keys = [KeyringLargeScale.workspace_dir,
                 KeyringLargeScale.test_time,

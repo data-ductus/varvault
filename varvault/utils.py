@@ -3,11 +3,6 @@ import enum
 from types import *
 from typing import *
 
-from .keyring import Keyring, Key
-from .minivault import MiniVault
-from .vaultstructs import VaultStructBase
-from .resource import BaseResource
-
 
 class AssignedByVaultEnum(enum.Enum):
     """
@@ -53,29 +48,13 @@ def concurrent_execution(target: Union[Coroutine, FunctionType, Callable], *inpu
     return asyncio.run(do(target, *inputs, **kwargs))
 
 
-def create_mv_from_resource(varvault_resource_from: BaseResource, **keys) -> MiniVault:
-    f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the {varvault_resource_from} passed."""
-    assert isinstance(varvault_resource_from, BaseResource), f"'varvault_resource_from' must be an instance of {BaseResource}, not {type(varvault_resource_from)}"
-    vault_file_data = varvault_resource_from.read()
+def assert_and_raise(condition: bool, exception: BaseException):
+    """
+    Asserts a condition and raises an exception if the condition is False.
+    Note: Checks if __debug__ is set to True before running the assertion, just how builtin `assert` works.
 
-    assert isinstance(vault_file_data, dict), f"'vault_file_data' from the filehandler is not a dict: {vault_file_data}"
-
-    # Get the keys from the keyring as a list.
-    return_vault_data = dict()
-
-    async def build(key_in_file: str):
-        if key_in_file not in keys:
-            return
-        key: Key = keys[key_in_file]
-        if key.valid_type and issubclass(key.valid_type, VaultStructBase):
-            return_vault_data[key] = key.valid_type.create(key_in_file, vault_file_data[key_in_file])
-        else:
-            if key.can_be_none and vault_file_data[key_in_file] is None:
-                return_vault_data[key] = None
-            else:
-                assert key.valid_type is None or isinstance(vault_file_data[key_in_file], key.valid_type), f"Key type missmatch ({key}; Valid type {key.valid_type}, actual type: {type(vault_file_data[key_in_file])}"
-                return_vault_data[key] = vault_file_data[key_in_file]
-
-    concurrent_execution(build, vault_file_data.keys())
-
-    return MiniVault(**return_vault_data)
+    :param condition: The condition to assert
+    :param exception: The exception to raise
+    """
+    if __debug__ and not condition:
+        raise exception

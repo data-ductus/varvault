@@ -1,26 +1,29 @@
-__version__ = "4.1.0"
-
+__version__ = "5.0.0"
 
 import os
 import json
 
-from typing import Dict, TextIO, AnyStr
+from typing import Dict, TextIO, AnyStr, Literal, Union
 
+from .resource import ResourceModes
 from .resource import BaseResource
+from .resource import ResourceNotFoundError
 
 from .keyring import Key
 from .keyring import Keyring
 
 from .validator import validator
+from .validator import modifier
+from .validator import ValidatorException
+from .validator import ModifierException
 
 from .minivault import MiniVault
 
 from .vault import VarVault
 
-from .vaultflags import VaultFlags
+from .flags import Flags
 
-from .vaultfactory import create_vault
-from .vaultfactory import from_vault
+from .factory import create
 
 from .vaultstructs import VaultStructDictBase
 from .vaultstructs import VaultStructListBase
@@ -30,7 +33,7 @@ from .vaultstructs import VaultStructStringBase
 
 from .utils import AssignedByVault
 from .utils import concurrent_execution
-from .utils import create_mv_from_resource
+from .utils import assert_and_raise
 
 
 def clear_logs():
@@ -45,20 +48,20 @@ def clear_logs():
 
 class JsonResource(BaseResource):
 
-    def __init__(self, path: AnyStr, live_update=False, vault_is_read_only=False, create_file_on_live_update=False):
-        """
-        Creates the JsonFileHandler object.
+    def __init__(self, path: AnyStr, mode: Union[Literal["r", "w", "a", "r+", "w+", "a+"], ResourceModes] = "r"):
+        f"""
+        Creates the JsonResource object.
         :param path: This should be the path to the JSON file that the vault should be using.
-        :param live_update: An optional flag to say if we should do live-update on the vault. Essentially, a vault can be created where either the file or the object in memory is in
-          charge of the state of the vault. This flag gives the file the ownership of the vault.
-        :param vault_is_read_only: An optional flag to say if we are only allowed to read from the vault and never do any changes to the file.
-        :param create_file_on_live_update: An optional flag specific for this filehandler. It tells if we should create the file when we use live-update or not.
-          Normally, you'd expect the file to be created by something, or someone, else.
+        :param mode: Sets the mode of the resource. The mode can be one of the following: 'r', 'w', 'a', 'r+', 'w+', 'a+'.
+        r: Read from existing resource (default)
+        w: Create new resource and ignore existing resource and write to it
+        a: Create a new resource if none exist, otherwise read from and write to existing resource
+        r+: Read from existing resource and perform live-update
+        w+: Create new resource and ignore existing resource and write to it, and perform live-update
+        a+: Create a new resource if none exist, otherwise read from and write to existing resource, and perform live-update
         """
-        path = os.path.expanduser(os.path.expandvars(path))
+        super(JsonResource, self).__init__(path, mode)
         self.file_io = None
-        self.create_file_on_live_update = create_file_on_live_update
-        super(JsonResource, self).__init__(path, live_update, vault_is_read_only)
 
     @property
     def state(self):
@@ -79,28 +82,41 @@ class JsonResource(BaseResource):
         """Creates the resource self.file_io for this handler which we'll use to read and write to."""
         path = self.path
         assert path, "Path is not defined"
-        dir = os.path.dirname(path)
-        if dir:
-            os.makedirs(dir, exist_ok=True)
+        dirname = os.path.dirname(path)
 
-        def create():
-            file_io = open(path, "w")
-            json.dump({}, file_io, indent=2)
-            file_io.close()
-            return file_io
+        create_dir = lambda: os.makedirs(dirname, exist_ok=True) if dirname else None
+        write = lambda: self.do_write({})
 
-        self.file_io = None
-        if self.exists():
-            self.file_io = open(path, "r+")
-        elif not self.live_update:
-            self.file_io = create()
-        elif self.create_file_on_live_update:
-            self.file_io = create()
+        if self.mode_properties.create and not self.mode_properties.load:
+            create_dir()
+            write()
+
+        elif self.mode_properties.load and self.mode_properties.create:
+            if not self.exists():
+                create_dir()
+                write()
+        else:
+            assert_and_raise(self.mode_properties.load and not self.mode_properties.create, NotImplementedError(f"Mode {self.mode} is not valid ({self.mode_properties})"))
+            try:
+                self.do_read()
+            except Exception as e:
+                if not self.mode_properties.live_update:
+                    raise ResourceNotFoundError(f"Unable to read from resource at {path} (mode is {self.mode})", self) from e
+                else:
+                    return
+
+        self.file_io = open(self.path, "r+")
+        self.file_io.close()
+
+    @property
+    def backup(self):
+        """Returns the backup path for this handler"""
+        return self.raw_path + ".bak"
 
     @property
     def path(self) -> AnyStr:
         """Returns the path to the vault-file as a JSON file."""
-        return self.raw_path
+        return self.raw_path if os.path.exists(self.raw_path) else self.backup
 
     def writable(self, obj: Dict) -> bool:
         f"""Checks if a key-value pair in a dict can be written to a file by attempting to serialize it by using {json.dumps}"""
@@ -116,7 +132,9 @@ class JsonResource(BaseResource):
 
     def do_write(self, vault: dict) -> None:
         """Writes the vault to the JSON file"""
-        json.dump(vault, open(self.path, "w"), indent=2)
+        with open(self.backup, "w") as f:
+            json.dump(vault, f, indent=2)
+        os.rename(self.backup, self.raw_path)
 
     def do_read(self) -> Dict:
         """Reads the vault from the JSON file"""

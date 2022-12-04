@@ -14,6 +14,10 @@ class VaultStructDictBase(VaultStructBase, dict, abc.ABC):
         super(VaultStructDictBase, self).__setattr__(key, value)
         super(VaultStructDictBase, self).__setitem__(key, value)
 
+    def __setitem__(self, key, value):
+        super(VaultStructDictBase, self).__setattr__(key, value)
+        super(VaultStructDictBase, self).__setitem__(key, value)
+
 
 class VaultStructListBase(VaultStructBase, list, abc.ABC):
     pass

@@ -1,10 +1,10 @@
-from typing import Union, Dict, List, AnyStr, Any, TextIO
+from typing import Union, Dict, List, AnyStr, Any, TextIO, Literal
 
 import tempfile
 import xmltodict
 
 from commons import *
-
+from varvault import ResourceNotFoundError
 
 vault_file_new = f"{DIR}/new-vault.xml"
 existing_vault = f"{DIR}/existing-vault.xml"
@@ -14,29 +14,45 @@ class XmlResource(varvault.BaseResource):
 
     KEY = "VAULT"
 
-    def __init__(self, path: str, live_update=False, file_is_read_only=False):
+    def __init__(self, path: str, mode: Literal["r", "w", "a", "r+", "w+", "a+"] = "r"):
         self.file_io = None
-        super(XmlResource, self).__init__(path, live_update, file_is_read_only)
+        super(XmlResource, self).__init__(path, mode)
 
     @property
     def resource(self) -> TextIO:
         return self.file_io
 
     def create_resource(self) -> None:
+        """Creates the resource self.file_io for this handler which we'll use to read and write to."""
         path = self.path
         assert path, "Path is not defined"
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dirname = os.path.dirname(path)
 
-        def create():
-            file_io = open(path, "w")
-            file_io.close()
-            return file_io
+        create_dir = lambda: os.makedirs(dirname, exist_ok=True) if dirname else None
+        write = lambda: self.do_write({})
 
-        self.file_io = None
-        if self.exists():
-            self.file_io = open(path, "r+")
-        elif not self.live_update:
-            self.file_io = create()
+        if self.mode_properties.create and not self.mode_properties.load:
+            create_dir()
+            write()
+
+        elif self.mode_properties.load and self.mode_properties.create:
+            if not self.exists():
+                create_dir()
+                write()
+
+        elif self.mode_properties.load and not self.mode_properties.create:
+            try:
+                self.do_read()
+            except Exception as e:
+                if not self.mode_properties.live_update:
+                    raise ResourceNotFoundError(f"Unable to read from resource at {path} (mode is {self.mode})", self) from e
+                else:
+                    return
+        else:
+            raise NotImplementedError(f"Mode {self.mode} is not valid ({self.mode_properties})")
+
+        self.file_io = open(self.path, "r+")
+        self.file_io.close()
 
     @property
     def state(self):
@@ -81,9 +97,7 @@ class Keyring(varvault.Keyring):
 class TestXmlVault:
     @classmethod
     def setup_class(cls):
-        logger.info(tempfile.tempdir)
         tempfile.tempdir = "/tmp" if sys.platform == "darwin" or sys.platform == "linux" else tempfile.gettempdir()
-        logger.info(tempfile.tempdir)
 
     def setup_method(self):
         try:
@@ -92,7 +106,7 @@ class TestXmlVault:
             pass
 
     def test_create_xml_vault(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault_resource_to=XmlResource(vault_file_new))
+        vault = varvault.create(keyring=Keyring, resource=XmlResource(vault_file_new, mode="w"))
 
         @vault.vaulter(return_keys=(Keyring.string_value, Keyring.int_value, Keyring.list_value))
         def _set():
@@ -108,7 +122,7 @@ class TestXmlVault:
         assert Keyring.list_value in data_in_file
 
     def test_read_from_xml_vault(self):
-        vault = varvault.from_vault(Keyring, "vault-from", XmlResource(existing_vault), varvault.VaultFlags.vault_is_read_only())
+        vault = varvault.create(keyring=Keyring, resource=XmlResource(existing_vault, "r"))
 
         @vault.vaulter(input_keys=(Keyring.string_value, Keyring.int_value))
         def _get(string_value=None, int_value=None):

@@ -23,15 +23,13 @@ def get_logger(name, remove_existing_log_file=False):
             result = logging.Formatter.format(self, record)
             return result
 
-    name = f"varvault-{name}"
+    name = f"varvault-{name}" if name else "varvault"
     temp_file = tempfile.NamedTemporaryFile(suffix=".log")
     temp_file.close()
     temp_dir = os.path.dirname(temp_file.name)
     temp_file.name = os.path.join(temp_dir, "varvault-logs", f"{name}.log")
-    try:
-        os.makedirs(os.path.dirname(temp_file.name), exist_ok=True)
-    except OSError:
-        pass
+    os.makedirs(os.path.dirname(temp_file.name), exist_ok=True)
+
     log_file = temp_file.name
     if remove_existing_log_file:
         try:
@@ -54,7 +52,7 @@ def get_logger(name, remove_existing_log_file=False):
 
     configure_logger(log)
 
-    log.info(f"Logger '{log.name}' created and logging to file '{log_file}'.")
+    log.debug(f"Logger '{log.name}' created and logging to file '{log_file}'.")
 
     return log
 

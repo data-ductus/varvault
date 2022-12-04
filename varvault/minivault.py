@@ -1,5 +1,6 @@
 from typing import *
 
+from .utils import assert_and_raise
 from .keyring import Key
 
 
@@ -7,10 +8,8 @@ class MiniVault(dict):
     """Class that acts as a very bare-bones vault to represent variables either coming from the vault via get_multiple, or when returning variables form a vaulted function."""
 
     def __init__(self, d=None, **kwargs):
-        if d is None:
-            super(MiniVault, self).__init__(kwargs)
-        else:
-            super(MiniVault, self).__init__(d)
+        d = d or {}
+        super(MiniVault, self).__init__(d, **kwargs)
 
     @staticmethod
     def build(keys: List[Key] or Tuple[Key], values: List[Any] or Tuple[Any]):
@@ -25,8 +24,8 @@ class MiniVault(dict):
             key = keys[i]
             value = values[i]
             assert isinstance(key, Key), f"Key {key} is not of correct type {Key}"
-            assert key.type_is_valid(value), f"Key '{key}' requires type to be '{key.valid_type}', but type for value is '{type(value)}'. " \
-                                             f"Is the order of your keys and values passed to '{MiniVault.build.__name__}' wrong?"
+            assert_and_raise(key.type_is_valid(value), ValueError(f"Key '{key}' requires type to be '{key.valid_type}', but type for value is '{type(value)}'. "
+                                                                  f"Is the order of your keys and values passed to '{MiniVault.build.__name__}' wrong?"))
             data[key] = value
 
         return MiniVault(data)
