@@ -1,41 +1,94 @@
+from __future__ import annotations
+
 import abc
+import enum
 import os.path
 import warnings
 import threading
 
-from typing import Union, Dict, Any, AnyStr
+from typing import Union, Dict, Any, AnyStr, Literal
+
+from .keyring import Key
+from .minivault import MiniVault
+from .vaultstructs import VaultStructBase
+
+
+class ModeProperties(dict):
+    def __setattr__(self, key, value):
+        if hasattr(self, "initialized") and self.initialized:
+            raise AttributeError("ModeProperties are immutable")
+        super(ModeProperties, self).__setattr__(key, value)
+        super(ModeProperties, self).__setitem__(key, value)
+
+    def __init__(self, read_only: bool, live_update: bool, create: bool, load: bool, write: bool):
+        self.initialized = False
+        super().__init__()
+        self.read_only = read_only
+        self.live_update = live_update
+        self.create = create
+        self.load = load
+        self.write = write
+        self.initialized = True
+
+
+class ResourceModes(enum.Enum):
+    READ = "r"                     # Read from existing resource (default)
+    WRITE = "w"                    # Create new resource and ignore existing resource and write to it
+    APPEND = "a"                   # Create a new resource if none exist, otherwise read from and write to existing resource
+    READ_W_LIVE_UPDATE = "r+"      # Read from existing resource and perform live-update
+    WRITE_W_LIVE_UPDATE = "w+"     # Create new resource and ignore existing resource and write to it, and perform live-update
+    APPEND_W_LIVE_UPDATE = "a+"    # Create a new resource if none exist, otherwise read from and write to existing resource, and perform live-update
 
 
 class BaseResource(abc.ABC):
-    def __init__(self, path: Union[AnyStr, Any], live_update=False, vault_is_read_only=False):
+
+    POSSIBLE_MODES = {
+        ResourceModes.READ.value,
+        ResourceModes.WRITE.value,
+        ResourceModes.APPEND.value,
+        ResourceModes.READ_W_LIVE_UPDATE.value,
+        ResourceModes.WRITE_W_LIVE_UPDATE.value,
+        ResourceModes.APPEND_W_LIVE_UPDATE.value,
+    }
+
+    MODE_MAPPING: Dict[str, ModeProperties] = {
+        ResourceModes.READ.value:                  ModeProperties(read_only=True,  live_update=False, create=False, load=True,  write=False),
+        ResourceModes.WRITE.value:                 ModeProperties(read_only=False, live_update=False, create=True,  load=False, write=True),
+        ResourceModes.APPEND.value:                ModeProperties(read_only=False, live_update=False, create=True,  load=True,  write=True),
+        ResourceModes.READ_W_LIVE_UPDATE.value:    ModeProperties(read_only=True,  live_update=True,  create=False, load=True,  write=False),
+        ResourceModes.WRITE_W_LIVE_UPDATE.value:   ModeProperties(read_only=False, live_update=True,  create=True,  load=False, write=True),
+        ResourceModes.APPEND_W_LIVE_UPDATE.value:  ModeProperties(read_only=False, live_update=True,  create=True,  load=True,  write=True)
+    }
+
+    def __init__(self, path: Union[AnyStr, Any], mode: Union[Literal["r", "w", "a", "r+", "w+", "a+"], ResourceModes] = "r"):
+        """
+        Creates an object that can be used to read and write to a resource.
+
+        :param path: This is the path to the resource. It can be essentially anything that identifies it. Any resource has a path to where it is located.
+        :param mode: Sets the mode of the resource. The mode can be one of the following: 'r', 'w', 'a', 'r+', 'w+', 'a+'.
+        r: Read from existing resource (default)
+        w: Create new resource and ignore existing resource and write to it
+        a: Create a new resource if none exist, otherwise read from and write to existing resource
+        r+: Read from existing resource and perform live-update
+        w+: Create new resource and ignore existing resource and write to it, and perform live-update
+        a+: Create a new resource if none exist, otherwise read from and write to existing resource, and perform live-update
+
+        """
         self.lock = threading.Lock()
+
+        if isinstance(mode, ResourceModes):
+            mode = mode.value
+        self.mode = mode
+        if self.mode not in self.POSSIBLE_MODES:
+            raise ValueError(f"Invalid mode: {self.mode}. Must be one of the following: {self.POSSIBLE_MODES}")
+
         self.raw_path = os.path.expanduser(os.path.expandvars(path))
-        self.live_update = live_update
-        self.vault_is_read_only = vault_is_read_only
+
+        self.mode_properties: ModeProperties = self.MODE_MAPPING[self.mode]
         self.last_known_state = None
         self.cached_state = None
-
-    @property
-    def live_update(self):
-        """Returns a bool that says if the resource should be updated live."""
-        return self._live_update
-
-    @live_update.setter
-    def live_update(self, v: bool):
-        """Sets the live-update property."""
-        assert isinstance(v, bool), f"Value must be a {bool}"
-        self._live_update = v
-
-    @property
-    def vault_is_read_only(self):
-        """Returns a bool that says if the vault is read-only."""
-        return self._vault_is_read_only
-
-    @vault_is_read_only.setter
-    def vault_is_read_only(self, v: bool):
-        """Sets the read-only state of the vault."""
-        assert isinstance(v, bool), f"Value must be a {bool}"
-        self._vault_is_read_only = v
+        if self.mode_properties.load and not self.mode_properties.create and not self.exists() and not self.mode_properties.live_update:
+            raise ResourceNotFoundError(f"Resource not found at: {self.raw_path} (mode is {self.mode})", self)
 
     def resource_has_changed(self):
         """Returns a bool that says if the resource has changed since the last time it was read."""
@@ -47,6 +100,34 @@ class BaseResource(abc.ABC):
         if fetch_state:
             self.last_known_state = self.state
         self.cached_state = self.last_known_state
+
+    def create_mv(self, **keys: Key) -> MiniVault:
+        f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the keyring."""
+        from varvault import concurrent_execution
+
+        vault_file_data = self.read()
+
+        assert isinstance(vault_file_data, dict), f"'vault_file_data' from the filehandler is not a dict: {vault_file_data}"
+
+        # Get the keys from the keyring as a list.
+        return_vault_data = dict()
+
+        async def build(key_in_file: str):
+            if key_in_file not in keys:
+                return
+            key: Key = keys[key_in_file]
+            if key.valid_type and issubclass(key.valid_type, VaultStructBase):
+                return_vault_data[key] = key.valid_type.create(key_in_file, vault_file_data[key_in_file])
+            else:
+                if key.can_be_none and vault_file_data[key_in_file] is None:
+                    return_vault_data[key] = None
+                else:
+                    assert key.valid_type is None or isinstance(vault_file_data[key_in_file], key.valid_type), f"Key type missmatch ({key}; Valid type {key.valid_type}, actual type: {type(vault_file_data[key_in_file])}"
+                    return_vault_data[key] = vault_file_data[key_in_file]
+
+        concurrent_execution(build, vault_file_data.keys())
+
+        return MiniVault(**return_vault_data)
 
     @property
     @abc.abstractmethod
@@ -89,8 +170,11 @@ class BaseResource(abc.ABC):
         if not vault:
             # No point writing an empty dict and it's not the job of this method to create the file
             return
-        if self._vault_is_read_only:
-            warnings.warn("Tried to write to a vault-file defined as read-only. This is not permitted by varvault.")
+
+        if self.mode_properties.read_only:
+            warnings.warn("Tried to write to a resource defined as read-only. This is not permitted by varvault.")
+            return
+
         if not self.resource:
             self.create_resource()
         try:
@@ -122,17 +206,17 @@ class BaseResource(abc.ABC):
         f"""Reads the vault from the database by calling the implemented '{self.do_read}' method."""
         if not self.resource:
             self.create_resource()
-        try:
-            with self.lock:
-                data = self.do_read()
-                self.update_state()
-                return data
-        except Exception as e:
-            if self.live_update:
-                # live-update has been defined; This means that any error from reading
-                # the file must be considered okay as the file might not exist yet.
+        with self.lock:
+            if self.exists():
+                try:
+                    data = self.do_read()
+                    self.update_state()
+                    return data
+                except Exception as e:
+                    raise ResourceNotFoundError(f"Failed to read from the resource (mode is {self.mode}): {e}", self)
+            if self.mode_properties.live_update:
                 return {}
-            raise ResourceNotFoundError(f"Failed to read from the resource and live-update isn't defined: {e}", self)
+            raise ResourceNotFoundError(f"Resource not found at: {self.raw_path} (mode is {self.mode})", self)
 
     @abc.abstractmethod
     def do_read(self) -> Dict:
@@ -149,14 +233,17 @@ class BaseResource(abc.ABC):
         raise NotImplementedError()
 
     def __str__(self):
-        return f"resource={self.resource}; path={self.path}; live_update={self.live_update}; vault_is_read_only={self._vault_is_read_only}"
+        return f"resource={self.resource}; path={self.path}; live_update={self.mode_properties.live_update}; vault_is_read_only={self.mode_properties.read_only}"
 
 
 class ResourceNotFoundError(FileNotFoundError):
-    def __init__(self, msg, filehandler: BaseResource):
+    def __init__(self, msg, resource: BaseResource):
         super(ResourceNotFoundError, self).__init__(msg)
         self.msg = msg
-        self.filehandler = filehandler
+        self.resource = resource
+
+    def __repr__(self):
+        return f"ResourceNotFoundError: {self.msg}; {self.resource.mode_properties}"
 
     def __str__(self):
-        return f"{self.msg} - {self.filehandler}"
+        return f"{self.msg} - {self.resource.mode_properties}"

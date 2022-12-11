@@ -96,7 +96,7 @@ class VaultStructInt(varvault.VaultStructIntBase):
 
 
 class VaultStructDictInvalid(varvault.VaultStructDictBase):
-    # This struct should fail to be loaded from a file since "build_from_vault_key" is not implemented.
+    # This struct should fail to be loaded from a file since "create" is not implemented.
 
     def __init__(self, value_1: str, value_2: int, **kwargs):
         super(VaultStructDictInvalid, self).__init__(**kwargs)
@@ -124,7 +124,7 @@ class TestVaultStructs:
             pass
 
     def test_vault_struct_dict(self):
-        vault = varvault.create_vault(KeyringVaultStruct, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
+        vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
         @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_dict)
         def _set():
@@ -133,15 +133,19 @@ class TestVaultStructs:
         _set()
         assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_dict), VaultStructDict)
         logger.info(vault.get(KeyringVaultStruct.key_vault_struct_dict))
+        vault_struct_dict = vault.get(KeyringVaultStruct.key_vault_struct_dict)
+        vault_struct_dict["value_1"] = "v2"
+        vault_struct_dict["value_2"] = 2
+        vault.insert(KeyringVaultStruct.key_vault_struct_dict, vault_struct_dict, varvault.Flags.permit_modifications)
 
-        from_vault = varvault.from_vault(KeyringVaultStruct, "from-vault", varvault.JsonResource(vault_file_new))
+        from_vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="r"))
         assert isinstance(from_vault.get(KeyringVaultStruct.key_vault_struct_dict), VaultStructDict)
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_dict), "internal_function")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_dict), "value_1")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_dict), "value_2")
 
     def test_vault_struct_list(self):
-        vault = varvault.create_vault(KeyringVaultStruct, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
+        vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
         @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_list)
         def _set():
@@ -151,14 +155,14 @@ class TestVaultStructs:
         assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_list), VaultStructList)
         logger.info(vault.get(KeyringVaultStruct.key_vault_struct_list))
 
-        from_vault = varvault.from_vault(KeyringVaultStruct, "from-vault", varvault.JsonResource(vault_file_new))
+        from_vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="r"))
         assert isinstance(from_vault.get(KeyringVaultStruct.key_vault_struct_list), VaultStructList)
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_list), "internal_function")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_list), "value_1")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_list), "value_2")
 
     def test_vault_struct_string(self):
-        vault = varvault.create_vault(KeyringVaultStruct, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
+        vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
         @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_string)
         def _set():
@@ -168,13 +172,13 @@ class TestVaultStructs:
         assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_string), VaultStructString)
         logger.info(vault.get(KeyringVaultStruct.key_vault_struct_string))
 
-        from_vault = varvault.from_vault(KeyringVaultStruct, "from-vault", varvault.JsonResource(vault_file_new))
+        from_vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="r"))
         assert isinstance(from_vault.get(KeyringVaultStruct.key_vault_struct_string), VaultStructString)
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_string), "internal_function")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_string), "string_value")
 
     def test_vault_struct_float(self):
-        vault = varvault.create_vault(KeyringVaultStruct, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
+        vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
         @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_float)
         def _set():
@@ -184,13 +188,13 @@ class TestVaultStructs:
         assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_float), VaultStructFloat)
         logger.info(vault.get(KeyringVaultStruct.key_vault_struct_float))
 
-        from_vault = varvault.from_vault(KeyringVaultStruct, "from-vault", varvault.JsonResource(vault_file_new))
+        from_vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="r"))
         assert isinstance(from_vault.get(KeyringVaultStruct.key_vault_struct_float), VaultStructFloat)
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_float), "internal_function")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_float), "float_value")
 
     def test_vault_struct_int(self):
-        vault = varvault.create_vault(KeyringVaultStruct, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
+        vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
         @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_int)
         def _set():
@@ -200,13 +204,13 @@ class TestVaultStructs:
         assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_int), VaultStructInt)
         logger.info(vault.get(KeyringVaultStruct.key_vault_struct_int))
 
-        from_vault = varvault.from_vault(KeyringVaultStruct, "from-vault", varvault.JsonResource(vault_file_new))
+        from_vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="r"))
         assert isinstance(from_vault.get(KeyringVaultStruct.key_vault_struct_int), VaultStructInt)
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_int), "internal_function")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_int), "int_value")
 
     def test_invalid_vault_struct(self):
-        vault = varvault.create_vault(KeyringVaultStruct, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
+        vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
         @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_dict_invalid)
         def _set():
@@ -215,14 +219,14 @@ class TestVaultStructs:
         _set()
         assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_dict_invalid), VaultStructDictInvalid)
         try:
-            from_vault = varvault.from_vault(KeyringVaultStruct, "from-vault", varvault.JsonResource(vault_file_new))
+            from_vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="r"))
             assert False, "Managed to create a vault with a VaultStruct that hasn't been implemented correctly"
         except NotImplementedError as e:
             logger.info(f"Expected error {e}: failed to load vault with key as invalid VaultStruct")
 
     def test_with_live_update(self):
-        resource = varvault.JsonResource(vault_file_new, create_file_on_live_update=True)
-        vault = varvault.create_vault(KeyringVaultStruct, "vault", varvault.VaultFlags.live_update(), varvault_resource_to=resource)
+        resource = varvault.JsonResource(vault_file_new, mode="w+")
+        vault = varvault.create(keyring=KeyringVaultStruct, resource=resource)
         extra = {KeyringVaultStruct.key_vault_struct_int: VaultStructInt(1, 1)}
         state = resource.state
         logger.info(f"After create: {state}")

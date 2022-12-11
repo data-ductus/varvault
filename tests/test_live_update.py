@@ -13,9 +13,7 @@ class TestLiveUpdate:
 
     @classmethod
     def setup_class(cls):
-        logger.info(tempfile.tempdir)
         tempfile.tempdir = "/tmp" if sys.platform == "darwin" or sys.platform == "linux" else tempfile.gettempdir()
-        logger.info(tempfile.tempdir)
 
     def setup_method(self):
         try:
@@ -26,10 +24,14 @@ class TestLiveUpdate:
             os.remove(vault_file_new_secondary)
         except:
             pass
+        try:
+            os.remove(vault_file_new + ".bak")
+        except:
+            pass
 
     def test_live_update_vault(self):
-        vault_new = varvault.create_vault(Keyring, "vault", varvault_resource_to=varvault.JsonResource(vault_file_new))
-        vault_from = varvault.from_vault(Keyring, "vault-from", varvault.JsonResource(vault_file_new), varvault.VaultFlags.live_update(), varvault.VaultFlags.vault_is_read_only())
+        vault_new = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w+"))
+        vault_from = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="r+"))
 
         @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
         def _set():
@@ -45,7 +47,7 @@ class TestLiveUpdate:
         _get()
 
     def test_live_update_on_main_vault(self):
-        vault = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.live_update(), varvault_resource_to=varvault.JsonResource(vault_file_new, create_file_on_live_update=True))
+        vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w+"))
 
         @vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
         def _set():
@@ -69,10 +71,10 @@ class TestLiveUpdate:
     def test_create_live_update_vault(self):
         assert not os.path.exists(vault_file_new)
         # The file should NOT be created here
-        vault = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.live_update(), varvault_resource_to=varvault.JsonResource(vault_file_new))
+        vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="r+"))
         assert not os.path.exists(vault_file_new)
         # Here the file SHOULD be created
-        vault = varvault.create_vault(Keyring, "vault", varvault.VaultFlags.live_update(), varvault_resource_to=varvault.JsonResource(vault_file_new, create_file_on_live_update=True))
+        vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w+"))
         assert os.path.exists(vault_file_new)
         assert Keyring.key_valid_type_is_str not in vault
         assert Keyring.key_valid_type_is_int not in vault
@@ -84,12 +86,12 @@ class TestLiveUpdate:
 
     def test_threaded_vaults_live_update(self):
         def runner():
-            vault_thread = varvault.create_vault(Keyring, "thread", varvault_resource_to=varvault.JsonResource(vault_file_new))
+            vault_thread = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
             vault_thread.insert(Keyring.key_valid_type_is_str, "valid")
             vault_thread.insert(Keyring.key_valid_type_is_int, 1)
 
         assert not os.path.exists(vault_file_new)
-        vault_outer = varvault.from_vault(Keyring, "outer", varvault.JsonResource(vault_file_new), varvault.VaultFlags.live_update())
+        vault_outer = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="r+"))
         assert not os.path.exists(vault_file_new), "Vault file is created when it shouldn't be"
 
         t = threading.Thread(target=runner)
@@ -102,8 +104,8 @@ class TestLiveUpdate:
             assert key_valid_type_is_int == 1
         validate()
 
-    def test_filehandler_live_update(self):
-        fh = varvault.JsonResource(vault_file_new, live_update=True, create_file_on_live_update=True)
+    def test_resource_live_update(self):
+        fh = varvault.JsonResource(vault_file_new, mode="w+")
         assert not fh.exists()
         fh.create_resource()
         assert fh.exists()
