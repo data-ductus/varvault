@@ -341,12 +341,12 @@ class VarVault(object):
             raise AssertionError(f"Errors found in the signature: {faulty_params}")
 
     def _vaulter__build_input_vars(self, input_keys, *all_flags, **kwargs):
-        mini = self.get_multiple(input_keys, *all_flags)
+        mini = self.get(input_keys, *all_flags)
         if Flags.is_set(Flags.input_key_can_be_missing, *all_flags):
             [mini.add(key, None) for key in input_keys if key not in mini]
 
         assert len(input_keys) == len(mini), \
-            f"The number of items acquired from {self.get_multiple.__name__} is not the same as the number of input-keys to the method, " \
+            f"The number of items acquired from {self.get.__name__} is not the same as the number of input-keys to the method, " \
             f"which it should be. This is probably a bug."
 
         for key in mini.keys():
@@ -454,12 +454,8 @@ class VarVault(object):
     # ========================================================
     # get
     # ========================================================
-    @functools.singledispatchmethod
-    def get(self, *args, **kwargs):
-        raise NotImplementedError("Not implemented")
-
-    @get.register
-    def get_single(self, key: Key, *flags: Flags, default=None):
+    @overload
+    def get(self, key: Key, *flags: Flags, default=None) -> object:
         f"""
         Get an object from the vault that is mapped to {key}. 
         
@@ -471,13 +467,10 @@ class VarVault(object):
         :param default: An optional argument to define which value to return as default is the value doesn't exist in the vault. Default is {None}. Only applicable if {Flags.input_key_can_be_missing} is set.
         :return: The object in the vault mapped to the {key}, or {None} if it's not in the vault.  
         """
-        mv = self.get_multiple([key], *flags)
-        if Flags.is_set(Flags.input_key_can_be_missing, *flags):
-            return mv.get(key, default)
-        return mv.get(key)
+        ...
 
-    @get.register
-    def get_multiple(self, keys: list or tuple, *flags: Flags) -> MiniVault:
+    @overload
+    def get(self, keys: list or tuple, *flags: Flags) -> MiniVault:
         f"""
         Get multiple objects from the vault that are mapped to keys in {keys}. 
         
@@ -488,21 +481,38 @@ class VarVault(object):
          {Flags.input_key_can_be_missing}
         :return: A {MiniVault} with all the objects in the vault mapped to the keys, or {None} if it's not in the vault.  
         """
+        ...
 
-        all_flags = self._get_all_flags(*flags)
-        mini = MiniVault()
-        self._assert_keys_in_keyring(keys)
-        with self.lock:
-            self._try_reload_from_file(*all_flags)
+    def get(self, *args, **kwargs):
+        def multiple(keys, *flags):
+            all_flags = self._get_all_flags(*flags)
+            mini = MiniVault()
+            self._assert_keys_in_keyring(keys)
+            with self.lock:
+                self._try_reload_from_file(*all_flags)
 
-            if not Flags.is_set(Flags.input_key_can_be_missing, *all_flags):
-                for key in keys:
-                    assert_and_raise(key in self, KeyError(f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. "
-                                                           f"You can set the flag '{Flags.input_key_can_be_missing}' to avoid this, "
-                                                           f"in which case the value will be {None}, or make sure a value is mapped to it. "
-                                                           f"Known functions/methods where this key is used as a return key: {key.usages.as_return}"))
-            [mini.update({key: self.vault.get(key)}) for key in keys if key in self]
-        return mini
+                if not Flags.is_set(Flags.input_key_can_be_missing, *all_flags):
+                    for key in keys:
+                        assert_and_raise(key in self, KeyError(f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. "
+                                                               f"You can set the flag '{Flags.input_key_can_be_missing}' to avoid this, "
+                                                               f"in which case the value will be {None}, or make sure a value is mapped to it. "
+                                                               f"Known functions/methods where this key is used as a return key: {key.usages.as_return}"))
+                [mini.update({key: self.vault.get(key)}) for key in keys if key in self]
+            return mini
+
+        def single(key, *flags, default=None):
+            mv = multiple([key], *flags)
+            if Flags.is_set(Flags.input_key_can_be_missing, *flags):
+                return mv.get(key, default)
+            return mv.get(key)
+
+        keys, *flags = args
+        if isinstance(keys, (list, tuple)):
+            return multiple(keys, *flags)
+        elif isinstance(keys, Key):
+            return single(keys, *flags, default=kwargs.get("default"))
+        else:
+            raise NotImplementedError(f"Type {type(keys)} is not supported for the 'get' method. Supported types are: {Key}, {list} and {tuple}.")
 
     # =======================================================================
     # lambdavaulter

@@ -1,5 +1,6 @@
 import json
 import os.path
+import re
 from typing import Callable
 
 import pytest
@@ -899,7 +900,7 @@ class TestVault:
 
         with pytest.raises(NotImplementedError) as e:
             vault.get({Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int})
-        assert "Not implemented" in str(e.value.args[0]), e
+        assert re.match("Type .* is not supported for the 'get' method", str(e.value.args[0])) is not None, e
 
     def test_clean_no_valid_type(self):
         class Temp:
@@ -953,6 +954,7 @@ class TestVault:
 
         vault = varvault.create(varvault.Flags.permit_modifications, keyring=KeyringTemp)
         vault.insert(KeyringTemp.key_is_type_can_be_none, Temp)
+
         with pytest.raises(ValueError) as e:
             vault.insert(KeyringTemp.key_is_type_can_be_none, dict())
         assert "requires type to be" in str(e.value.args[0]), e
@@ -1021,3 +1023,31 @@ class TestVault:
         resource.write({"key": "value"})
         resource = varvault.JsonResource(vault_file_new, mode="r")
         assert resource.read() == {"key": "value"}, resource.read()
+
+    def test_modifier_plus_validator_on_insert(self):
+        @varvault.validator(function_returns_bool=True)
+        def no_dashes_in_str(value: str) -> bool:
+            return re.match(r"^[a-zA-Z0-9_]*$", value) is not None
+
+        @varvault.modifier()
+        def remove_dashes_in_str(value: str) -> str:
+            return value.replace("-", "_")
+
+        @varvault.modifier()
+        def remove_underscore_in_str(value: str) -> str:
+            return value.replace("_", "-")
+
+        @varvault.validator(function_returns_bool=True)
+        def no_underscore_in_str(value: str) -> bool:
+            return re.match(r"^[a-zA-Z0-9-]*$", value) is not None
+
+        class KeyringKeyValidationFunction(varvault.Keyring):
+            name = varvault.Key("name", valid_type=str, modifiers=remove_underscore_in_str, validators=no_underscore_in_str)
+            path = varvault.Key("path", valid_type=str, modifiers=remove_dashes_in_str, validators=no_dashes_in_str)
+
+        vault = varvault.create(varvault.Flags.permit_modifications, keyring=KeyringKeyValidationFunction)
+        vault.insert(KeyringKeyValidationFunction.name, "will_be_modified_to_dashes")
+        vault.insert(KeyringKeyValidationFunction.path, "will-be-modified-to-underscores")
+        assert vault.get(KeyringKeyValidationFunction.name) == "will-be-modified-to-dashes", vault.get(KeyringKeyValidationFunction.name)
+        assert vault.get(KeyringKeyValidationFunction.path) == "will_be_modified_to_underscores", vault.get(KeyringKeyValidationFunction.path)
+

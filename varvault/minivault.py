@@ -24,8 +24,6 @@ class MiniVault(dict):
             key = keys[i]
             value = values[i]
             assert isinstance(key, Key), f"Key {key} is not of correct type {Key}"
-            assert_and_raise(key.type_is_valid(value), ValueError(f"Key '{key}' requires type to be '{key.valid_type}', but type for value is '{type(value)}'. "
-                                                                  f"Is the order of your keys and values passed to '{MiniVault.build.__name__}' wrong?"))
             data[key] = value
 
         return MiniVault(data)

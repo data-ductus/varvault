@@ -185,7 +185,7 @@ class TestLargeScaleVault:
                 KeyringLargeScale.result,
                 ]
 
-        vars = vault.get_multiple(keys)
+        vars = vault.get(keys)
         # This list should be empty; If not, a key is missing in the vault
         assert len([key for key in keys if key not in vars]) == 0, f"Keys are missing in vars: {[key for key in keys if key not in vars]}"
 
