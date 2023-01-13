@@ -455,7 +455,7 @@ class VarVault(object):
     # get
     # ========================================================
     @overload
-    def get(self, key: Key, *flags: Flags, default=None) -> object:
+    def get(self, key: Key, *flags: Flags, default=None) -> Any:
         f"""
         Get an object from the vault that is mapped to {key}. 
         
