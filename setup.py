@@ -16,7 +16,7 @@ README = pathlib.Path(f"{HERE}/README.md").read_text()
 # A good way to tell if we are backwards compatible is to run the test suite and if the tests pass without requiring any changes, we can pretty safely assume we are backwards compatible.
 MAJOR = 5  # Change this if the previous MAJOR is incompatible with this build. Set MINOR and PATCH to 0
 MINOR = 0  # Change this if the functionality has changed, but we are still backwards compatible with previous MINOR versions. Set PATCH to 0
-PATCH = 2  # Change this is if we are fixing a bug that doesn't change the functionality. If a bug-fix has caused functionality to be changed, see MINOR instead
+PATCH = 3  # Change this is if we are fixing a bug that doesn't change the functionality. If a bug-fix has caused functionality to be changed, see MINOR instead
 VERSION = f"{MAJOR}.{MINOR}.{PATCH}"
 
 
@@ -60,8 +60,8 @@ setup(
     long_description=README,
     long_description_content_type="text/markdown",
     url="https://github.com/data-ductus/varvault",
-    author="Calle Holst",
-    author_email="calle.holst@dataductus.se",
+    author="Chloe Holst",
+    author_email="chloe.holst@dataductus.se",
     license="Apache 2.0",
     classifiers=[
         "License :: OSI Approved :: Apache Software License",
