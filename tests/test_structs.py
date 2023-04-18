@@ -126,7 +126,7 @@ class TestVaultStructs:
     def test_vault_struct_dict(self):
         vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_dict)
+        @vault.manual(output=KeyringVaultStruct.key_vault_struct_dict)
         def _set():
             return VaultStructDict("v1", 1)
 
@@ -147,7 +147,7 @@ class TestVaultStructs:
     def test_vault_struct_list(self):
         vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_list)
+        @vault.manual(output=KeyringVaultStruct.key_vault_struct_list)
         def _set():
             return VaultStructList("v1", 1)
 
@@ -164,7 +164,7 @@ class TestVaultStructs:
     def test_vault_struct_string(self):
         vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_string)
+        @vault.manual(output=KeyringVaultStruct.key_vault_struct_string)
         def _set():
             return VaultStructString("string-value", "extra-value-here")
 
@@ -180,7 +180,7 @@ class TestVaultStructs:
     def test_vault_struct_float(self):
         vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_float)
+        @vault.manual(output=KeyringVaultStruct.key_vault_struct_float)
         def _set():
             return VaultStructFloat(3.14, "extra-value-here")
 
@@ -196,7 +196,7 @@ class TestVaultStructs:
     def test_vault_struct_int(self):
         vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_int)
+        @vault.manual(output=KeyringVaultStruct.key_vault_struct_int)
         def _set():
             return VaultStructInt(1, "extra-value-here")
         _set()
@@ -212,7 +212,7 @@ class TestVaultStructs:
     def test_invalid_vault_struct(self):
         vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=KeyringVaultStruct.key_vault_struct_dict_invalid)
+        @vault.manual(output=KeyringVaultStruct.key_vault_struct_dict_invalid)
         def _set():
             return VaultStructDictInvalid("v1", 1)
 

@@ -22,7 +22,7 @@ class XmlResource(varvault.BaseResource):
     def resource(self) -> TextIO:
         return self.file_io
 
-    def create_resource(self) -> None:
+    def create(self) -> None:
         """Creates the resource self.file_io for this handler which we'll use to read and write to."""
         path = self.path
         assert path, "Path is not defined"
@@ -108,7 +108,7 @@ class TestXmlVault:
     def test_create_xml_vault(self):
         vault = varvault.create(keyring=Keyring, resource=XmlResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=(Keyring.string_value, Keyring.int_value, Keyring.list_value))
+        @vault.manual(output=(Keyring.string_value, Keyring.int_value, Keyring.list_value))
         def _set():
             return "valid", 1, [1, 2, 3, 4, 5]
 
@@ -124,7 +124,7 @@ class TestXmlVault:
     def test_read_from_xml_vault(self):
         vault = varvault.create(keyring=Keyring, resource=XmlResource(existing_vault, "r"))
 
-        @vault.vaulter(input_keys=(Keyring.string_value, Keyring.int_value))
+        @vault.manual(input=(Keyring.string_value, Keyring.int_value))
         def _get(string_value=None, int_value=None):
             assert string_value == "valid"
             assert int_value == "1"

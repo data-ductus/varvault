@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import asyncio
 import inspect
 import logging
+import time
+import warnings
 import functools
 import traceback
-import warnings
 
 from typing import *
 from threading import Lock
@@ -14,63 +16,61 @@ from .resource import BaseResource
 from .keyring import Keyring, Key
 from .logger import get_logger, configure_logger
 from .minivault import MiniVault
+from .subscriber_thread import SubscriberThread
 from .utils import concurrent_execution, AssignedByVault, assert_and_raise
 from .flags import Flags
 
 
-class VarVault(object):
-    class Vault(dict):
-        def __init__(self, vault_resource: BaseResource = None, initial_vars: MiniVault = None):
-            super(VarVault.Vault, self).__init__()
-            self.writable_args = dict()
-            self.resource = vault_resource
-            self.initialized = False
-            if initial_vars and isinstance(initial_vars, MiniVault):
-                self.put(initial_vars)
-            self.initialized = True
+class VarVault(dict):
 
-        def __setitem__(self, key, value):
-            data = {key: value}
-            if self.resource and self.resource.writable(data):
-                self.writable_args.update(data)
+    def __setitem__(self, key, value):
+        data = {key: value}
+        if self.resource and self.resource.writable(data):
+            self.writable_args.update(data)
 
-            super(VarVault.Vault, self).__setitem__(key, value)
+        super(VarVault, self).__setitem__(key, value)
 
-        @functools.singledispatchmethod
-        def put(self, *args, **kwargs):
-            raise NotImplementedError("Not implemented")
+    def __delitem__(self, key):
+        if self.resource and key in self.writable_args:
+            del self.writable_args[key]
 
-        @put.register
-        def _mv(self, mini: MiniVault):
-            f"""{self.put} to add a MiniVault"""
+        super(VarVault, self).__delitem__(key)
 
-            async def _put(item):
-                key, value = item
-                self.__setitem__(key, value)
-            concurrent_execution(_put, mini.items())
-            self.write()
+    @functools.singledispatchmethod
+    def _put(self, *args, **kwargs):
+        raise NotImplementedError("Not implemented")
 
-        @put.register
-        def _k_v(self, key: Key, value: object):
-            f"""{self.put} to add a key-value pair"""
+    @_put.register
+    def _mv(self, mini: MiniVault):
+        f"""{self._put} to add a MiniVault"""
+
+        async def _put(item):
+            key, value = item
             self.__setitem__(key, value)
-            self.write()
+        concurrent_execution(_put, mini.items())
+        self.write()
 
-        def write(self):
-            # No resource has been defined, which means we cannot write anything to the file
-            if not self.resource:
-                return
+    @_put.register
+    def _k_v(self, key: Key, value: object):
+        f"""{self._put} to add a key-value pair"""
+        self.__setitem__(key, value)
+        self.write()
 
-            # Write is not permitted
-            if not self.resource.mode_properties.write:
-                # If it's initialized and live-update isn't permitted, then we should raise a warning because we are clearly trying to write to a file that we cannot write to
-                if self.initialized and not self.resource.mode_properties.live_update:
-                    warnings.warn("It appears you are trying to write to a resource that is not permitted to write to and the vault has already been initialized. "
-                                  "This is not permitted and you should consider removing the action that triggered this.")
-                return
+    def write(self):
+        # No resource has been defined, which means we cannot write anything to the file
+        if not self.resource:
+            return
 
-            # Try to write writable_args to vault_file if it has been defined
-            self.resource.write(self.writable_args)
+        # Write is not permitted
+        if not self.resource.mode_properties.write:
+            # If it's initialized and live-update isn't permitted, then we should raise a warning because we are clearly trying to write to a file that we cannot write to
+            if self.initialized and not self.resource.mode_properties.live_update:
+                warnings.warn("It appears you are trying to write to a resource that is not permitted to write to and the vault has already been initialized. "
+                              "This is not permitted and you should consider removing the action that triggered this.")
+            return
+
+        # Try to write writable_args to vault_file if it has been defined
+        self.resource.write(self.writable_args)
 
     def __init__(self,
                  *flags: Flags,
@@ -93,6 +93,8 @@ class VarVault(object):
         :param extra_keys: Optional. A kwargs-object with extra keys that are not defined in the {keyring}. This can be useful when you have a lot of keys that you might 
          want to handle in a programmatic sense rather than in a pre-defined sense. 
         """
+        super().__init__()
+
         assert_and_raise(keyring is not None and issubclass(keyring, Keyring),
                          ValueError(f"{self.__init__.__name__} requires a {Keyring} class to be passed as the {keyring} argument"))
 
@@ -105,8 +107,8 @@ class VarVault(object):
         assert_and_raise(logger is None or isinstance(logger, logging.Logger),
                          ValueError(f"'logger' must be of type {logging.Logger}, or {None}, not {type(logger)}"))
 
-        assert_and_raise(not Flags.is_set(Flags.clean_return_keys, *flags),
-                         ValueError(f"You really should not set the flag {Flags.clean_return_keys} to the vault itself as that would be an extremely bad idea."))
+        assert_and_raise(not Flags.is_set(Flags.clean_output_keys, *flags),
+                         ValueError(f"You really should not set the flag {Flags.clean_output_keys} to the vault itself as that would be an extremely bad idea."))
 
         for key_name, key in extra_keys.items():
             assert_and_raise(isinstance(key_name, str) and isinstance(key, Key),
@@ -118,22 +120,30 @@ class VarVault(object):
             self.logger = logger
         else:
             self.logger = get_logger(name, remove_existing_log_file) if not disable_logger else None
+        self.writable_args = dict()
+        self.initialized = False
         self.times_taken = dict()
         self.keyring_class = keyring
         self.flags: set = set(flags)
         self.resource: BaseResource = resource
+        self.functions_as_automatics: Dict[Key, List[Callable]] = dict()
+        self.keys_used_by_automatics: Dict[Callable, List[Key]] = dict()
+        self.automatic_conditionals: Dict[Callable, Callable] = dict()
+        self.running_tasks: Set[SubscriberThread] = set()
+        self.threaded_automatics = set()
+
+        if initial_vars and isinstance(initial_vars, MiniVault):
+            self._put(initial_vars)
+        self.initialized = True
 
         if self.resource and not self.resource.resource:
-            self.resource.create_resource()
+            self.resource.create()
 
         self.lock = Lock()
 
         # Get the keys from the keyring and expand it with extra keys
         self.keys: Dict[str, Key] = self.keyring_class.get_keys()
         self.keys.update(extra_keys)
-
-        # Create the inner vault
-        self._inner_vault = self.Vault(self.resource, initial_vars)
 
         if self.resource:
             self.log(f"Vault writing data to '{self.resource.path}'", level=logging.DEBUG, all_flags=flags)
@@ -148,10 +158,22 @@ class VarVault(object):
                           f"vault contains this key will never succeed; Consider removing the call that triggered this warning.")
             return False
 
-        return key in self.vault
+        return super().__contains__(key)
 
     def __str__(self):
-        return self._inner_vault.__str__()
+
+        return super().__str__()
+
+    def as_json_str(self):
+        """
+        Returns the vault as a json-string, if possible. If not, return as a string.
+        :return: A json-string containing the vault.
+        """
+        try:
+            return json.dumps(self, indent=2)
+        except json.JSONDecodeError:
+            # Probably some objects in the vault that cannot be serialized. Just return the string representation of the vault then.
+            return self.__str__()
 
     def log(self, msg: object, *args, level: int = logging.DEBUG, exception: BaseException = None, all_flags: Union[Set[Flags], Tuple[Flags]] = None):
         if self.logger:
@@ -179,148 +201,58 @@ class VarVault(object):
             return
         configure_logger(self.logger, overall_level=logging.DEBUG, stream_level=logging.INFO, file_level=logging.DEBUG)
 
-    @property
-    def vault(self) -> Vault:
-        return self._inner_vault
-
-    # =========================================================================================================================================
-    # vaulter
-    # =========================================================================================================================================
-    def vaulter(self,
-                *flags: Flags,
-                input_keys: Union[Key, List[Key, ...], Tuple[Key, ...]] = None,
-                return_keys: Union[Key, List[Key, ...], Tuple[Key, ...]] = None) -> Callable:
+    # ============================================================
+    # manual
+    # ============================================================
+    def manual(self,
+               *flags: Flags,
+               input: Union[Key, List[Key], Tuple[Key, ...]] = None,
+               output: Union[Key, List[Key], Tuple[Key, ...]] = None) -> Callable:
         f"""
-        Decorator to define a function as a vaulted function.
+        Decorator to register a function as a vaulted function that must be called MANUALLY.
         A vaulted function works a lot different to a normal function.
         A vault works like a key-value storage. A vaulted function will get its arguments
         by accessing them from the vault, and then store any returned value back in the vault.
 
-        :param input_keys: Can be of type: {Key}, {list}, {tuple}. Default: {None}. Keys must be defined in the
+        :param input: Can be of type: {Key}, {list}, {tuple}. Default: {None}. Keys must be defined in the
          keyring for this specific vault.
-        :param return_keys: Can be of type: {str}, {list}, {tuple}. Default: {None}. Keys must be defined in the
+        :param output: Can be of type: {Key}, {list}, {tuple}. Default: {None}. Keys must be defined in the
          keyring for this specific vault.
         :param flags: Optional argument for defining some flags for this vaulted function. Flags that have an effect:
          {Flags.debug},
          {Flags.silent},
          {Flags.input_key_can_be_missing},
          {Flags.permit_modifications},
-         {Flags.split_return_keys},
-         {Flags.return_key_can_be_missing},
-         {Flags.clean_return_keys},
+         {Flags.split_output_keys},
+         {Flags.output_key_can_be_missing},
+         {Flags.clean_output_keys},
          {Flags.no_error_logging},
          {Flags.use_signature_for_input_keys},
+         {Flags.output_key_replaces_input_key},
         """
-        input_keys = input_keys if input_keys else list()
-        return_keys = return_keys if return_keys else list()
         all_flags = self._get_all_flags(*flags)
-        # Validate the input to the decorator
-        self._vaulter__validate_input(input_keys, return_keys)
 
-        # Convert input- and return keys to a list if it's a single key to make it easier to handle
-        input_keys, return_keys = self._vaulter__convert_input_keys_and_return_keys(input_keys, return_keys)
+        # Convert input- and output keys to a list if it's a single key to make it easier to handle
+        input, output = self._convert_input_keys_and_output_keys(input, output)
 
         # Assert that the keys are in the keyring
-        self._assert_keys_in_keyring(input_keys)
-        self._assert_keys_in_keyring(return_keys)
+        self._assert_keys_in_keyring(input)
+        self._assert_keys_in_keyring(output)
 
         def wrap_outer(func):
-            func_module_name = f"{func.__module__}.{func.__name__}"
-            [key.usages.add_input(func) for key in input_keys]
-            [key.usages.add_return(func) for key in return_keys]
+            [key.usages.add_input(func) for key in input]
+            [key.usages.add_return(func) for key in output]
             if Flags.is_set(Flags.use_signature_for_input_keys, *all_flags):
-                self._vaulter__populate_input_keys_from_signature(func, input_keys)
+                self._manual__populate_input_keys_from_signature(func, input)
 
             # Separate handling if the decorated function uses the coroutine API
             if asyncio.iscoroutinefunction(func):
-                @functools.wraps(func)
-                async def wrap_inner_async(*args, **kwargs):
-                    #
-                    # Do pre-call related stuff
-                    #
-                    input_kwargs = self._vaulter__pre_call(input_keys, func_module_name, *all_flags, **kwargs)
-                    try:
-                        ret = await func(*args, **input_kwargs)
-                    except Exception as e:
-                        if not Flags.is_set(Flags.no_error_logging, *all_flags):
-                            # Flag to not log error is NOT set, so we should log the error and then raise the error
-                            self.log(f"Failed to run {func_module_name}: {e}", level=logging.ERROR, all_flags=all_flags)
-                            self.log(str(traceback.format_exc()).rstrip("\n"), level=logging.ERROR, all_flags=all_flags)
-                        raise
-
-                    #
-                    # Do post-call related stuff
-                    #
-                    self._vaulter__post_call(ret, return_keys, func_module_name, *all_flags)
-
-                    return ret
-                return wrap_inner_async
+                return self._inner_async(func, *all_flags, input=input, output=output)
             else:
-                @functools.wraps(func)
-                def wrap_inner(*args, **kwargs):
-                    #
-                    # Do pre-call related stuff
-                    #
-                    input_kwargs = self._vaulter__pre_call(input_keys, func_module_name, *all_flags, **kwargs)
-
-                    try:
-                        ret = func(*args, **input_kwargs)
-                    except Exception as e:
-                        if not Flags.is_set(Flags.no_error_logging, *all_flags):
-                            # Flag to not log error is NOT set, so we should log the error and then raise the error
-                            self.log(f"Failed to run {func_module_name}: {e}", level=logging.ERROR, all_flags=all_flags)
-                            self.log(str(traceback.format_exc()).rstrip("\n"), level=logging.ERROR, all_flags=all_flags)
-                        raise
-
-                    #
-                    # Do post-call related stuff
-                    #
-                    self._vaulter__post_call(ret, return_keys, func_module_name, *all_flags)
-
-                    return ret
-                return wrap_inner
+                return self._inner_standard(func, *all_flags, input=input, output=output)
         return wrap_outer
 
-    def _vaulter__pre_call(self, input_keys: Union[List[Key], Tuple[Key]], func_module_name: str, *all_flags: Flags, **kwargs):
-        input_kwargs = self._vaulter__build_input_vars(input_keys, *all_flags, **kwargs)
-        kwargs.update(input_kwargs)
-
-        self.log(f"======{'=' * len(func_module_name)}=", all_flags=all_flags)
-        self.log(f">>>>> {func_module_name}:", all_flags=all_flags)
-        if input_kwargs:
-            self.log(f"-------------", all_flags=all_flags)
-            self.log(f"Input kwargs:", all_flags=all_flags)
-            for kwarg_key, kwarg_value in input_kwargs.items():
-                self.log(f"--> {kwarg_key}: ({type(kwarg_value)}) -- {kwarg_value}", all_flags=all_flags)
-            self.log(f"-------------", all_flags=all_flags)
-        input_kwargs.update(kwargs)
-
-        self.log(f"======= Calling {func_module_name} ========", all_flags=all_flags)
-        return input_kwargs
-
-    def _vaulter__post_call(self, ret, return_keys, func_module_name, *all_flags: Flags):
-        self._vaulter__handle_return_vars(ret, return_keys, *all_flags)
-        self.log(f"<<<<< {func_module_name}:", all_flags=all_flags)
-        self.log(f"======{'=' * len(func_module_name)}=\n", all_flags=all_flags)
-        self._reset_log_levels()
-
-    def _vaulter__validate_input(self, input_keys, return_keys):
-        assert_and_raise(isinstance(input_keys, (Key, list, tuple)),
-                         TypeError(f"input_keys must be of type {Key}, {list}, or {tuple}"))
-        assert_and_raise(isinstance(return_keys, (Key, list, tuple)),
-                         TypeError(f"return_keys must be of type {Key}, {list}, or {tuple}"))
-
-    def _vaulter__convert_input_keys_and_return_keys(self, input_keys: Union[Key, List, Tuple], return_keys: Union[Key, List, Tuple]):
-        if isinstance(input_keys, Key):
-            input_keys = [input_keys]
-        if isinstance(return_keys, Key):
-            return_keys = [return_keys]
-
-        assert_and_raise(isinstance(input_keys, (list, tuple)), TypeError(f"Input keys doesn't have the correct type; actual type: {type(input_keys)}"))
-        assert_and_raise(isinstance(return_keys, (list, tuple)), TypeError(f"Return keys doesn't have the correct type; actual type: {type(input_keys)}"))
-        return input_keys, return_keys
-
-    def _vaulter__populate_input_keys_from_signature(self, func, input_keys):
+    def _manual__populate_input_keys_from_signature(self, func, input_keys):
         signature = inspect.signature(func)
         faulty_params = list()
         keys = self.keyring_class.get_keys()
@@ -340,7 +272,7 @@ class VarVault(object):
         if faulty_params:
             raise AssertionError(f"Errors found in the signature: {faulty_params}")
 
-    def _vaulter__build_input_vars(self, input_keys, *all_flags, **kwargs):
+    def _manual__build_input_keys(self, input_keys, *all_flags, **kwargs):
         mini = self.get(input_keys, *all_flags)
         if Flags.is_set(Flags.input_key_can_be_missing, *all_flags):
             [mini.add(key, None) for key in input_keys if key not in mini]
@@ -350,39 +282,79 @@ class VarVault(object):
             f"which it should be. This is probably a bug."
 
         for key in mini.keys():
-            assert key not in kwargs, f"Key {key} seems to already exist in kwargs used for the function decorated with '@{self.vaulter.__name__}'"
+            assert key not in kwargs, f"Key {key} seems to already exist in kwargs used for the function decorated with '@{self.manual.__name__}'"
 
         return mini
 
-    def _vaulter__handle_return_vars(self, ret, return_keys, *all_flags):
+    # ============================================================
+    # automatic
+    # ============================================================
+    def automatic(self, *flags: Flags, input: Union[Key, List, Tuple] = None, output: Union[Key, List, Tuple] = None, condition: Callable = lambda: True, threaded: bool = False):
+        f"""
+        Registers a function as a subscriber to the vault. The function will be called AUTOMATICALLY whenever all of the given input_keys is inserted into the vault.
+        
+        Note that since this function runs within the context of varvault, there is no way to insert other arguments to the subscribed function, 
+        or to capture any of the return variables. If you need to do that, you can use the {self.manual} decorator instead.
+        
+        It's entirely possible to chain multiple automatic functions together that each depend on each other. They will run as soon as all of their input keys are configured in the vault. 
+        
+        :param input: Can be of type: {Key}, {list}, {tuple}. Default: {None}. Keys must be defined in the
+         keyring for this specific vault.
+        :param output: Can be of type: {Key}, {list}, {tuple}. Default: {None}. Keys must be defined in the
+         keyring for this specific vault.
+        :param condition: A function, like a lambda, that returns a boolean. If the function returns {False}, the subscriber will not be called even if the required keys exist in the vault.
+        :param threaded: If set to {True}, the subscriber will be called in a separate thread. This is useful if the function doesn't need to be monitored and takes long to run.
+        :param flags: Optional argument for defining some flags for this vaulted function. Flags that have an effect:
+         {Flags.debug},
+         {Flags.silent},
+         {Flags.input_key_can_be_missing},
+         {Flags.permit_modifications},
+         {Flags.split_output_keys},
+         {Flags.output_key_can_be_missing},
+         {Flags.clean_output_keys},
+         {Flags.no_error_logging},
+         {Flags.use_signature_for_input_keys},
+         {Flags.output_key_replaces_input_key},
+        """
+        input, output = self._convert_input_keys_and_output_keys(input, output)
 
-        if not return_keys:
-            # No return keys were defined; Just return from here then as there is nothing else to do.
-            return
+        assert_and_raise(all(isinstance(key, Key) for key in input),
+                         TypeError(f"input_keys must be of type {Key}, {List} or {Tuple}"))
 
-        if Flags.is_set(Flags.split_return_keys, *all_flags):
-            assert_and_raise(isinstance(ret, MiniVault),
-                             ValueError(f"If {Flags.split_return_keys} is defined, you MUST return values in the form of a {MiniVault} object or we cannot determine which keys go where"))
-            ret = MiniVault({key: value for key, value in ret.items() if key in return_keys})
-        if Flags.is_set(Flags.return_key_can_be_missing, *all_flags):
-            assert_and_raise(isinstance(ret, MiniVault),
-                             ValueError(f"If {Flags.return_key_can_be_missing} is defined, you MUST return values in the form of a {MiniVault} object or we "
-                                        f"cannot determine which keys should be assigned to the vault and which should be skipped."))
-        if Flags.is_set(Flags.clean_return_keys, *all_flags):
-            self._clean_return_keys(return_keys, *all_flags)
-        else:
-            mini = self._to_minivault(return_keys, ret, *all_flags)
+        assert_and_raise(not any(key in output for key in input),
+                         KeyError(f"input and output cannot contain the same keys. This would effectively mean that the function subscribes "
+                                  f"to itself and would run forever if {Flags.permit_modifications.name} is set, or crash if it's not set."))
 
-            async def validate_keys_in_mini_vault(key, can_be_missing=False):
-                assert key in mini or can_be_missing, f"Key {key} isn't present in MiniVault; keys in mini: {mini.keys()}. " \
-                                                      f"You can set the vault-flag {Flags.return_key_can_be_missing} to skip this validation step"
-            concurrent_execution(validate_keys_in_mini_vault, return_keys, can_be_missing=Flags.is_set(Flags.return_key_can_be_missing, *all_flags))
+        all_flags = self._get_all_flags(*flags)
 
-            async def validate_keys_in_return_keys(key):
-                assert key in return_keys, f"Key {key} isn't defined as a return-key; return keys: {return_keys}"
-            concurrent_execution(validate_keys_in_return_keys, mini.keys())
+        def wrap_outer(func):
 
-            self.insert_minivault(mini, *all_flags)
+            [key.usages.add_input(func) for key in input]
+            [key.usages.add_return(func) for key in output]
+            # Separate handling if the decorated function uses the coroutine API
+            if asyncio.iscoroutinefunction(func):
+                raise ValueError(f"Async subscriber functions do not work because async functions cannot truly run in the background. Use {self.automatic.__name__} with 'threaded={True}' instead.")
+
+            else:
+                f = self._inner_standard(func, *all_flags, input=input, output=output)
+            if threaded:
+                self.threaded_automatics.add(f)
+            self.keys_used_by_automatics[f] = list()
+            self.automatic_conditionals[f] = condition
+            for key in input:
+                if key not in self.functions_as_automatics:
+                    self.functions_as_automatics[key] = list()
+                self.functions_as_automatics[key].append(f)
+                self.keys_used_by_automatics[f].append(key)
+            self._dispatch_subscribers(input)
+            return f
+
+        return wrap_outer
+
+    def purge_stopped_thread(self, subscriber_thread: SubscriberThread):
+        if subscriber_thread in self.running_tasks:
+            self.logger.info(f"Removing stopped thread {subscriber_thread} from the running tasks")
+            self.running_tasks.remove(subscriber_thread)
 
     # ============================================================
     # insert
@@ -403,9 +375,9 @@ class VarVault(object):
         mini = self._to_minivault([key], value, *self._get_all_flags(*flags))
         self.insert_minivault(mini, *self._get_all_flags(*flags))
 
-    # ==================================================
+    # ============================================================
     # insert_minivault
-    # ==================================================
+    # ============================================================
     def insert_minivault(self, mini: MiniVault, *flags):
         f"""
         Inserts a {MiniVault} into the vault.
@@ -441,19 +413,21 @@ class VarVault(object):
             self.log("Variables going in:", all_flags=all_flags)
             for ret_key, ret_value in mini.items():
                 self.log(f"<-- {ret_key}: ({type(ret_value)}) -- {ret_value}", all_flags=all_flags)
-            self.vault.put(mini)
+            self._put(mini)
+
             self.log("-----------------", all_flags=all_flags)
+        self._dispatch_subscribers(mini.keys())
 
     def _insert__assert_value_may_be_inserted(self, key: Key, value: object, modifications_permitted=False):
         # Validate that key doesn't already exist in the vault, or that modifications_permitted==True
-        assert key not in self or modifications_permitted, f"Key {key} already exists in the vault and modifications to existing variables are not permitted."
+        assert_and_raise(key not in self or modifications_permitted, KeyError(f"Key {key} already exists in the vault and modifications to existing variables are not permitted."))
 
         # Validate the type of the value to insert into the vault
         assert_and_raise(key.type_is_valid(value), ValueError(f"Key '{key}' requires type to be '{key.valid_type}', but type for value is '{type(value)}'."))
 
-    # ========================================================
+    # ============================================================
     # get
-    # ========================================================
+    # ============================================================
     @overload
     def get(self, key: Key, *flags: Flags, default=None) -> Any:
         f"""
@@ -496,8 +470,8 @@ class VarVault(object):
                         assert_and_raise(key in self, KeyError(f"Key {key} is not mapped to an object in the vault; it appears to be missing in the vault. "
                                                                f"You can set the flag '{Flags.input_key_can_be_missing}' to avoid this, "
                                                                f"in which case the value will be {None}, or make sure a value is mapped to it. "
-                                                               f"Known functions/methods where this key is used as a return key: {key.usages.as_return}"))
-                [mini.update({key: self.vault.get(key)}) for key in keys if key in self]
+                                                               f"Known functions/methods where this key is used as an output key: {key.usages.as_return}"))
+                [mini.update({key: self[key]}) for key in keys if key in self]
             return mini
 
         def single(key, *flags, default=None):
@@ -514,32 +488,215 @@ class VarVault(object):
         else:
             raise NotImplementedError(f"Type {type(keys)} is not supported for the 'get' method. Supported types are: {Key}, {list} and {tuple}.")
 
-    # =======================================================================
+    # ============================================================
     # lambdavaulter
-    # =======================================================================
+    # ============================================================
     def lambdavaulter(self,
                       lambda_func: Callable,
                       *flags: Flags,
                       input_keys: Union[Key, List[Key, ...], Tuple[Key, ...]] = None,
-                      return_keys: Union[Key, List[Key, ...], Tuple[Key, ...]] = None):
+                      output_keys: Union[Key, List[Key, ...], Tuple[Key, ...]] = None):
         f"""
         Function to wrap a lambda like you would decorate a function. 
         
-        Uses the {self.vaulter} function to wrap the lambda. See {self.vaulter} function for information about flags that have an effect on this function.
+        Uses the {self.manual} function to wrap the lambda. See {self.manual} function for information about flags that have an effect on this function.
         
         Why you would like to do this, who knows. But you can do it. 
         
         :param lambda_func: The lambda to wrap. 
         :param flags: A set of flags to use when wrapping the lambda. 
         :param input_keys: The keys to use as input for the lambda. 
-        :param return_keys: The keys to return from the lambda. 
+        :param output_keys: The keys to return from the lambda. 
         :return: A wrapped lambda. 
         """
-        return self.vaulter(*flags, input_keys=input_keys, return_keys=return_keys)(lambda_func)
+        return self.manual(*flags, input=input_keys, output=output_keys)(lambda_func)
 
-    # ==================================================
+    def await_running_tasks(self, timeout: float = 0, exception: Exception = None):
+        f"""
+        Wait for all running tasks to finish.
+        
+        :param timeout: The timeout in seconds to wait for all tasks to finish. Default is 0, which literally means 0 seconds. If this function is called with {timeout}=0, 
+         it means you expect all tasks to be finished by now. If you don't expect all tasks to be finished by now, you should probably set a timeout.
+        """
+        start = time.time()
+        while self.running_tasks:
+            if time.time() - start > timeout:
+                self.logger.info(f"Timeout of {timeout} seconds reached while waiting for no running tasks. ")
+                if exception:
+                    raise exception
+                raise TimeoutError(f"Timeout of {timeout} seconds reached while waiting for no running tasks.")
+
+    # ============================================================
     # privates
-    # ==================================================
+    # ============================================================
+
+    def _convert_input_keys_and_output_keys(self, input: Union[Key, List, Tuple], output: Union[Key, List, Tuple]) -> Tuple[List, List]:
+        input = input if input else list()
+        output = output if output else list()
+
+        # Validate the input to the decorator
+        self._validate_input(input, output)
+
+        if isinstance(input, Key):
+            input = [input]
+        if isinstance(output, Key):
+            output = [output]
+
+        assert_and_raise(isinstance(input, (list, tuple)), TypeError(f"Input keys doesn't have the correct type; actual type: {type(input)}"))
+        assert_and_raise(isinstance(output, (list, tuple)), TypeError(f"Output keys doesn't have the correct type; actual type: {type(output)}"))
+        return input, output
+
+    def _validate_input(self, input_keys, output_keys):
+        assert_and_raise(isinstance(input_keys, (Key, list, tuple)),
+                         TypeError(f"input_keys must be of type {Key}, {list}, or {tuple}"))
+        assert_and_raise(isinstance(output_keys, (Key, list, tuple)),
+                         TypeError(f"output_keys must be of type {Key}, {list}, or {tuple}"))
+
+    def _inner_async(self, func, *all_flags: Flags, input: List[Key] = None, output: List[Key] = None):
+        f"""Inner async wrapper for {self.manual}/{self.automatic} decorators"""
+        func_module_name = f"{func.__module__}.{func.__name__}"
+
+        @functools.wraps(func)
+        async def wrap_inner_async(*args, **kwargs):
+            #
+            # Do pre-call related stuff
+            #
+            input_kwargs = self._pre_call(input, func_module_name, *all_flags, **kwargs)
+            try:
+                ret = await func(*args, **input_kwargs)
+            except Exception as e:
+                if not Flags.is_set(Flags.no_error_logging, *all_flags):
+                    # Flag to not log error is NOT set, so we should log the error and then raise the error
+                    self.log(f"Failed to run {func_module_name}: {e}", level=logging.ERROR, all_flags=all_flags)
+                    self.log(str(traceback.format_exc()).rstrip("\n"), level=logging.ERROR, all_flags=all_flags)
+                raise
+
+            #
+            # Do post-call related stuff
+            #
+            self._post_call(ret, input, output, func_module_name, *all_flags)
+
+            return ret
+        return wrap_inner_async
+
+    def _inner_standard(self, func, *all_flags: Flags, input: List[Key] = None, output: List[Key] = None):
+        f"""Inner standard wrapper for {self.manual}/{self.automatic} decorators"""
+        func_module_name = f"{func.__module__}.{func.__name__}"
+
+        @functools.wraps(func)
+        def wrap_inner(*args, **kwargs):
+            #
+            # Do pre-call related stuff
+            #
+            input_kwargs = self._pre_call(input, func_module_name, *all_flags, **kwargs)
+
+            try:
+                ret = func(*args, **input_kwargs)
+            except Exception as e:
+                if not Flags.is_set(Flags.no_error_logging, *all_flags):
+                    # Flag to not log error is NOT set, so we should log the error and then raise the error
+                    self.log(f"Failed to run {func_module_name}: {e}", level=logging.ERROR, all_flags=all_flags)
+                    self.log(str(traceback.format_exc()).rstrip("\n"), level=logging.ERROR, all_flags=all_flags)
+                raise
+
+            #
+            # Do post-call related stuff
+            #
+            self._post_call(ret, input, output, func_module_name, *all_flags)
+
+            return ret
+        return wrap_inner
+
+    def _pre_call(self, input: Union[List[Key], Tuple[Key]], func_module_name: str, *all_flags: Flags, **kwargs):
+        input_kwargs = self._manual__build_input_keys(input, *all_flags, **kwargs)
+        kwargs.update(input_kwargs)
+
+        self.log(f"======{'=' * len(func_module_name)}=", all_flags=all_flags)
+        self.log(f">>>>> {func_module_name}:", all_flags=all_flags)
+        if input_kwargs:
+            self.log(f"-------------", all_flags=all_flags)
+            self.log(f"Input kwargs:", all_flags=all_flags)
+            for kwarg_key, kwarg_value in input_kwargs.items():
+                self.log(f"--> {kwarg_key}: ({type(kwarg_value)}) -- {kwarg_value}", all_flags=all_flags)
+            self.log(f"-------------", all_flags=all_flags)
+        input_kwargs.update(kwargs)
+
+        self.log(f"======= Calling {func_module_name} ========", all_flags=all_flags)
+        return input_kwargs
+
+    def _post_call(self, ret, input_keys, output_keys, func_module_name, *all_flags: Flags):
+        self._handle_output_keys(ret, input_keys, output_keys, *all_flags)
+        self.log(f"<<<<< {func_module_name}:", all_flags=all_flags)
+        self.log(f"======{'=' * len(func_module_name)}=\n", all_flags=all_flags)
+        self._reset_log_levels()
+
+    def _handle_output_keys(self, ret, input_keys, output_keys, *all_flags):
+
+        if not output_keys:
+            # No output keys were defined; Just return from here then as there is nothing else to do.
+            return
+
+        if Flags.is_set(Flags.split_output_keys, *all_flags):
+            assert_and_raise(isinstance(ret, MiniVault),
+                             ValueError(f"If {Flags.split_output_keys} is defined, you MUST return values in the form of a {MiniVault} object or we cannot determine which keys go where"))
+            ret = MiniVault({key: value for key, value in ret.items() if key in output_keys})
+        if Flags.is_set(Flags.output_key_can_be_missing, *all_flags):
+            assert_and_raise(isinstance(ret, MiniVault),
+                             ValueError(f"If {Flags.output_key_can_be_missing} is defined, you MUST return values in the form of a {MiniVault} object or we "
+                                        f"cannot determine which keys should be assigned to the vault and which should be skipped."))
+        if Flags.is_set(Flags.clean_output_keys, *all_flags):
+            self._clean_output_keys(output_keys, *all_flags)
+        else:
+            mini = self._to_minivault(output_keys, ret, *all_flags)
+            if Flags.is_set(Flags.output_key_replaces_input_key, *all_flags):
+                assert_and_raise(len(input_keys) == 1 and len(output_keys) == 1, ValueError(f"If {Flags.output_key_replaces_input_key} is defined, you MUST define "
+                                                                                            f"exactly one input key and one output key."))
+                del self[input_keys[0]]
+
+            async def validate_keys_in_mini_vault(key, can_be_missing=False):
+                assert key in mini or can_be_missing, f"Key {key} isn't present in MiniVault; keys in mini: {mini.keys()}. " \
+                                                      f"You can set the vault-flag {Flags.output_key_can_be_missing} to skip this validation step"
+            concurrent_execution(validate_keys_in_mini_vault, output_keys, can_be_missing=Flags.is_set(Flags.output_key_can_be_missing, *all_flags))
+
+            async def validate_keys_in_output_keys(key):
+                assert key in output_keys, f"Key {key} isn't defined as an output-key; output keys: {output_keys}"
+            concurrent_execution(validate_keys_in_output_keys, mini.keys())
+
+            self.insert_minivault(mini, *all_flags)
+
+    def _dispatch_subscribers(self, keys: List[Key]):
+        potential_functions_to_dispatch = set()
+        functions_to_dispatch = set()
+        threaded_functions_to_dispatch = set()
+        for key in keys:
+            functions = self.functions_as_automatics.get(key, [])
+            for function in functions:
+                potential_functions_to_dispatch.add(function)
+        for function in potential_functions_to_dispatch:
+            keys_that_must_be_in_vault = self.keys_used_by_automatics.get(function, [])
+            may_dispatch = True
+            for key in keys_that_must_be_in_vault:
+                if key not in self:
+                    # Key does not exist in vault. Dispatch is impossible.
+                    may_dispatch = False
+                    break
+            if may_dispatch:
+                conditional: Callable = self.automatic_conditionals[function]
+                if conditional():
+                    if function in self.threaded_automatics:
+                        threaded_functions_to_dispatch.add(function)
+                    else:
+                        functions_to_dispatch.add(function)
+        for function in threaded_functions_to_dispatch:
+            # Dispatch threaded functions.
+            thread = SubscriberThread(function, self)
+            self.running_tasks.add(thread)
+            thread.start()
+
+        for function in functions_to_dispatch:
+            # Dispatch the function.
+            function()
+
     def _get_all_flags(self, *flags):
         self._assert_flag_is_correct_type(*flags)
         all_flags = self.flags.copy()
@@ -569,11 +726,11 @@ class VarVault(object):
                 return
             self.log(f"Reloading from {self.resource.path}; The content has changed and live-update is enabled.", all_flags=all_flags)
             mv = self.resource.create_mv(**self.keys)
-            self.vault.put(mv)
+            self._put(mv)
 
-    def _clean_return_keys(self, return_keys: Union[List[Key], Tuple[Key]], *all_flags: Flags):
-        self.log(f"Cleaning return var keys: {return_keys}", all_flags=all_flags)
-        for key in return_keys:
+    def _clean_output_keys(self, output_keys: Union[List[Key], Tuple[Key]], *all_flags: Flags):
+        self.log(f"Cleaning output keys: {output_keys}", all_flags=all_flags)
+        for key in output_keys:
             if not key.valid_type:
                 temp = None
                 self.log(f"Cleaning key {key} by setting it to None (no valid_type defined for {key})", all_flags=all_flags)
@@ -584,27 +741,27 @@ class VarVault(object):
                 except:
                     temp = None
                     self.log(f"Cleaning key {key} by setting it to '{None}' (valid_type is defined, but no default constructor appears to exist for {key.valid_type})", all_flags=all_flags)
-            self.vault.put(key, temp)
+            self._put(key, temp)
 
-    def _to_minivault(self, return_keys, ret, *all_flags) -> MiniVault:
+    def _to_minivault(self, output_keys, ret, *all_flags) -> MiniVault:
         if isinstance(ret, MiniVault):
             mini = ret
         else:
             # It's not a MiniVault; Let's turn it into one.
             if isinstance(ret, tuple):
                 # It's a tuple, which means it's either meant as a single item, or there are multiple return objects
-                if len(return_keys) == 1:
-                    # There's only one return key defined, which means the keys valid type should be tuple, OR the flag return_tuple_is_single_item is set
-                    assert return_keys[0].valid_type == tuple or Flags.is_set(Flags.return_tuple_is_single_item, *all_flags), \
-                        f"You have defined only a single return key, yet you are returning multiple items, while the valid type for key " \
-                        f"{self.keyring_class.__name__}.{return_keys[0]} is not {tuple}, nor is {Flags.return_tuple_is_single_item} set."
+                if len(output_keys) == 1:
+                    # There's only one output key defined, which means the keys valid type should be tuple, OR the flag return_tuple_is_single_item is set
+                    assert output_keys[0].valid_type == tuple or Flags.is_set(Flags.return_tuple_is_single_item, *all_flags), \
+                        f"You have defined only a single output key, yet you are returning multiple items, while the valid type for key " \
+                        f"{self.keyring_class.__name__}.{output_keys[0]} is not {tuple}, nor is {Flags.return_tuple_is_single_item} set."
 
-                    mini = MiniVault.build(return_keys, [ret])
+                    mini = MiniVault.build(output_keys, [ret])
                 else:
-                    assert len(return_keys) == len(ret), "The number of return variables and the number of return keys must be identical in order to map the keys to the return variables"
-                    mini = MiniVault.build(return_keys, ret)
+                    assert len(output_keys) == len(ret), "The number of returned variables and the number of output keys must be identical in order to map the keys to the returned variables"
+                    mini = MiniVault.build(output_keys, ret)
             else:
                 # ret is a single item
-                assert len(return_keys) == 1, "There appear to be more than 1 return-key defined, but only a single item that is returned"
-                mini = MiniVault.build(return_keys, [ret])
+                assert len(output_keys) == 1, "There appear to be more than 1 return-key defined, but only a single item that is returned"
+                mini = MiniVault.build(output_keys, [ret])
         return mini

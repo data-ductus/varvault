@@ -1,4 +1,4 @@
-__version__ = "5.0.3"
+__version__ = "6.0.0"
 
 import os
 import json
@@ -78,7 +78,7 @@ class JsonResource(BaseResource):
         """Returns the file resource object for this handler."""
         return self.file_io
 
-    def create_resource(self) -> None:
+    def create(self) -> None:
         """Creates the resource self.file_io for this handler which we'll use to read and write to."""
         path = self.path
         assert path, "Path is not defined"

@@ -237,7 +237,7 @@ class TestLargeScaleVault:
                 KeyringLargeScale.result,
                 ]
 
-        @vault.vaulter(input_keys=keys)
+        @vault.manual(input=keys)
         def _get(**kwargs):
             assert len([k for k in keys if k in kwargs]) == len(keys)
         _get()
@@ -292,7 +292,7 @@ class TestLargeScaleVault:
 
         # Note the use of varvault.Flags.silent here. It will speed up the processing significantly.
         # It brings processing down from 3 seconds to 0.6 seconds for 500 parallel requests.
-        @vault.vaulter(varvault.Flags.silent, input_keys=keys)
+        @vault.manual(varvault.Flags.silent, input=keys)
         async def _get(thread_id, **kwargs):
             assert isinstance(thread_id, int)
             assert len([k for k in keys if k in kwargs]) == len(keys)
@@ -358,7 +358,7 @@ class TestLargeScaleVault:
         json.dump(contents, open(vault_file_new, "w"), indent=2)
 
         # Since we use live update, the contents of the existing vault file should now be loaded into the vault.
-        @vault.vaulter(input_keys=keys)
+        @vault.manual(input=keys)
         def _get(**kwargs):
             assert len([k for k in keys if k in kwargs]) == len(keys)
         _get()
