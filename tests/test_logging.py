@@ -41,7 +41,7 @@ class TestLogging:
         vault_new = varvault.create(varvault.Flags.silent, varvault.Flags.remove_existing_log_file, keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
         vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
 
-        @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(output=Keyring.key_valid_type_is_str)
         def _set():
             return "valid"
         _set()
@@ -59,7 +59,7 @@ class TestLogging:
         # This way, we can easily capture stdout to a file and assert that the output is the expected
         vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
 
-        @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(output=Keyring.key_valid_type_is_str)
         def _set():
             return "valid"
         _set()
@@ -69,7 +69,7 @@ class TestLogging:
         assert len(open(vault_log_file).readlines()) >= 12, f"There appears to be fewer lines in the log file than what there should be. " \
                                                             f"There should only be 12 at least. {varvault.Flags.debug} appears to not function correctly"
 
-        @vault_new.vaulter(input_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(input=Keyring.key_valid_type_is_str)
         def _use(key_valid_type_is_str: str = varvault.AssignedByVault):
             return key_valid_type_is_str
 
@@ -83,7 +83,7 @@ class TestLogging:
         # This way, we can easily capture stdout to a file and assert that the output is the expected
         vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
 
-        @vault_new.vaulter(varvault.Flags.silent, return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(varvault.Flags.silent, output=Keyring.key_valid_type_is_str)
         def _set():
             return "valid"
         _set()
@@ -105,7 +105,7 @@ class TestLogging:
         assert vault_new.logger is None, "logger object is not None; it should be"
         assert not os.path.exists(vault_log_file), f"{vault_log_file} exists after creating the vault when saying there shouldn't be a logger object"
 
-        @vault_new.vaulter(varvault.Flags.silent, return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(varvault.Flags.silent, output=Keyring.key_valid_type_is_str)
         def _set():
             return "valid"
         _set()
@@ -115,7 +115,7 @@ class TestLogging:
         vault_log_file = os.path.join(tempfile.gettempdir(), "varvault-logs", "varvault.log")
         vault_new = varvault.create(varvault.Flags.debug, keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault_new.vaulter(varvault.Flags.silent, return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(varvault.Flags.silent, output=Keyring.key_valid_type_is_str)
         def _doset():
             return "valid"
         _doset()
@@ -149,7 +149,7 @@ class TestLogging:
             vault_new = varvault.create(varvault.Flags.debug, varvault.Flags.remove_existing_log_file, keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"), logger=logger)
             assert vault_new.logger.name == "pytest"  # The logger used for pytest here is called pytest
 
-            @vault_new.vaulter(varvault.Flags.silent, return_keys=Keyring.key_valid_type_is_str)
+            @vault_new.manual(varvault.Flags.silent, output=Keyring.key_valid_type_is_str)
             def _set():
                 return "valid"
             _set()
@@ -170,7 +170,7 @@ class TestLogging:
         # This way, we can easily capture stdout to a file and assert that the output is the expected
         vault_new.logger.addHandler(logging.StreamHandler(open(temp_log_file, "w")))
 
-        @vault_new.vaulter(varvault.Flags.no_error_logging, return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(varvault.Flags.no_error_logging, output=Keyring.key_valid_type_is_str)
         def _set():
             raise Exception("Failing deliberately")
 

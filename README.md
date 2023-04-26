@@ -10,7 +10,7 @@ pip3 install varvault
 ```
 
 ### Contact
-calle.holst@dataductus.se
+chloe.holst@dataductus.se
 
 
 ## What is this? 
@@ -22,46 +22,47 @@ You can then use a decorator to annotate functions that you want to have use thi
 in or to extract variables to be used as input for the function.  
 
 ## How does it work? 
-The way this works is that when you write a function, you annotate it with a special decorator (`varvault.Vault.vaulter`)
-that takes some arguments. This decorator will then handle any input arguments and return variables for you.
+The way this works is that when you write a function, you annotate it with a special decorator (`varvault.Vault.manual` or `varvault.Vault.automatic`)
+that takes some arguments. The decorator will then handle any input arguments and return variables for you.
 The decorator takes some arguments that defines certain keys and flags to tweak the behavior.
 
 ### How about an example?
-The best examples can be found in the test suites which can give a very good idea how it works and is guaranteed to be up-to-date. 
+The best examples can be found in the test suites which can give a very good idea how it works and is guaranteed to be up-to-date.
+
 ```python
 import varvault
 
 
 class Keyring(varvault.Keyring):
-    arg1 = varvault.Key("arg1", valid_type=int)
-    arg2 = varvault.Key("arg2", valid_type=int)
+   arg1 = varvault.Key("arg1", valid_type=int)
+   arg2 = varvault.Key("arg2", valid_type=int)
 
 
 vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource("~/test.json", mode=varvault.ResourceModes.WRITE))
 
 
-@vault.vaulter(return_keys=[Keyring.arg1, Keyring.arg2])
+@vault.manual(output=(Keyring.arg1, Keyring.arg2))
 def create_args(arg1, arg2):
-    return arg1, arg2
+   return arg1, arg2
 
 
-@vault.vaulter(input_keys=[Keyring.arg1, Keyring.arg2])
+@vault.manual(input=(Keyring.arg1, Keyring.arg2))
 def use_args(arg1: int = varvault.AssignedByVault, arg2: int = varvault.AssignedByVault):
-    print(f"{Keyring.arg1}: {arg1}, {Keyring.arg2}: {arg2}")
+   print(f"{Keyring.arg1}: {arg1}, {Keyring.arg2}: {arg2}")
 
 
 def run_create_args():
-    create_args(1, 2)
-    
+   create_args(1, 2)
+
 
 def run_use_args():
-    use_args()
+   use_args()
 
 
 if __name__ == "__main__":
-    run_create_args()
-    
-    run_use_args()    
+   run_create_args()
+
+   run_use_args()    
 ```
 1. In this example, we start by creating a class that defines a keyring. This keyring will be the keys used
    in the vault. Any key you use for storing variables or take variables out should be defined as a constant 
@@ -72,29 +73,29 @@ if __name__ == "__main__":
    a single argument to be defined and that is a class that inherits from the `varvault.Keyring` (a class based on the Keyring class here).
    Optionally, you can define some flags to further tweak the behavior of the vault. These tweaked behaviors include
    allowing for existing key-value pairs to be modified (this is not allowed by default), allowing return variables from
-   functions defined with return keys to be None, and setting a flag to write some additional debug logs.
+   functions defined with output keys to be `None`, and setting a flag to write some additional debug logs.
    We also define the input parameter `resource` which is a `varvault.JsonResource` object that points to a `.JSON` file. This resource will be used  
    as a vault file to store all the arguments in. 
 
 3. We define a function called `create_args` that takes some arguments (we have to insert variables
    into the vault somehow, right?) that we annotate with the vault decorator. We pass an argument to the
-   decorator called `return_keys`. This argument tells the vault which keys this function will assign its
-   return variables to. Note that the order of the return keys matter. In this case, the ingoing argument `arg1` will
+   decorator called `ouput`. This argument tells the vault which keys this function will assign its
+   return variables to. Note that the order of the output keys matter. In this case, the ingoing argument `arg1` will
    be assigned to `Keyring.arg1`, and the ingoing argument `arg2` will be assigned to `Keyring.arg2`. It's very possible
-   to set `return_keys` to a single `Key` as well if you only have one variable to return. If you want more control
+   to set `output` to a single `Key` as well if you only have one variable to return. If you want more control
    over how return variables are handled, please see `varvault.MiniVault` and make use of that to ensure that
    return-variables are handled exactly as you want. 
    
    **Note:** When this function is called, and it finishes, the decorator here will capture the return variables and then store 
-   those return variables in the vault with the keys that were passed to the decorator as `return_keys`. These variables can then be 
+   those return variables in the vault with the keys that were passed to the decorator as `output`. These variables can then be 
    accessed by another function that uses the same vault-object as this one does to decorate a function.
 
 4. We then create a new function called `use_args` that we also annotate with the vault decorator. We pass a different
-   argument to the decorator this time called `input_keys`. This argument tells the vault which keys in the vault
+   argument to the decorator this time called `input`. This argument tells the vault which keys in the vault
    we want passed to this function. The order of the keys doesn't really matter here, the order is mostly aesthetic.
    
    **Note:** What ends up happening when this function is called, is that the decorator will try to extract keys defined in
-   `input_keys` from the vault and then pass those variables to the function as a dictionary (by defining the arguments as
+   `input` from the vault and then pass those variables to the function as a dictionary (by defining the arguments as
    keyword arguments, these arguments won't need to be provided when the method is called). 
    It is possible to just bundle all the arguments in the signature of the function as a `**kwargs` structure (in this case the signature
    would be `def use_args(**kwargs)`). One of the benefits of doing like in the example is that you can easily see what 
@@ -131,7 +132,7 @@ if __name__ == "__main__":
                            resource=varvault.JsonResource("~/test.json", mode=varvault.ResourceModes.APPEND))
    ```
    When re-creating a vault from an existing file it's recommended to allow modifications 
-   (see `varvault.VaultFlags.permit_modifications`) in-case you are planning to write the same
+   (see `varvault.Flags.permit_modifications`) in-case you are planning to write the same
    arguments to the vault again. 
 
 ## Conclusion

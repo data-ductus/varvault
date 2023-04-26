@@ -31,5 +31,5 @@ test: clear-logs
 	@coverage run --source=varvault -m pytest --tb=short --junitxml ./logs/test-report.xml -vvv --full-trace -p no:cacheprovider --html=./logs/test-report.html --self-contained-html $(shell ls tests/test_*.py)
 	@coverage html -d ./logs/coverage-report
 	@coverage json -o ./logs/coverage-report/coverage.json --pretty-print
-	@python3 -c "import json; assert json.load(open('./logs/coverage-report/coverage.json'))['totals']['percent_covered'] == 100.0, 'Coverage is not 100%'" && echo "Coverage is 100%"
+	@python3 -c "import json; assert json.load(open('./logs/coverage-report/coverage.json'))['totals']['percent_covered'] == 100.0, 'Coverage is not 100%'; print('Coverage is 100%')"
 

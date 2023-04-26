@@ -36,14 +36,14 @@ class TestVault:
     def test_create_new_vault(self):
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(output=Keyring.key_valid_type_is_str)
         def _set_valid():
             return "valid-key"
 
         _set_valid()
         assert vault.get(Keyring.key_valid_type_is_str) == "valid-key"
 
-        @vault.vaulter(return_keys=Keyring.key_valid_type_is_int)
+        @vault.manual(output=Keyring.key_valid_type_is_int)
         def _set_invalid():
             return "invalid-key; must be int"
 
@@ -55,15 +55,30 @@ class TestVault:
             logger.info(f"Expected error received; test passed")
             assert Keyring.key_valid_type_is_int not in vault
 
+    def test_no_keys(self):
+        vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
+        called = False
+        vault.manual()
+
+        def _set_valid():
+            nonlocal called
+            called = True
+            return "valid-key"
+
+        _set_valid()
+        assert called
+
+
+
     def test_put(self):
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
         mv = varvault.MiniVault({Keyring.key_valid_type_is_str: "value", Keyring.key_valid_type_is_int: 1})
-        vault.vault.put(mv)
+        vault._put(mv)
         assert Keyring.key_valid_type_is_str in vault
         assert Keyring.key_valid_type_is_int in vault
 
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
-        vault.vault.put(Keyring.key_valid_type_is_str, "value")
+        vault._put(Keyring.key_valid_type_is_str, "value")
         assert Keyring.key_valid_type_is_str in vault
         assert Keyring.key_valid_type_is_int not in vault
 
@@ -83,7 +98,7 @@ class TestVault:
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
         vault.insert_minivault(existing)
 
-        @vault.vaulter(varvault.Flags.permit_modifications, input_keys=Keyring.key_valid_type_is_str, return_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(varvault.Flags.permit_modifications, input=Keyring.key_valid_type_is_str, output=Keyring.key_valid_type_is_str)
         def mod(**kwargs):
             key_valid_type_is_str = kwargs.get(Keyring.key_valid_type_is_str)
             assert key_valid_type_is_str == "valid"
@@ -106,7 +121,7 @@ class TestVault:
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
         vault.insert(Keyring.key_valid_type_is_str, "valid")
         try:
-            @vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
+            @vault.manual(output=Keyring.key_valid_type_is_str)
             def _set():
                 return "new-value-that-should-not-go-in"
             _set()
@@ -116,7 +131,7 @@ class TestVault:
             logger.info(f"Expected error received; test passed")
             assert vault.get(Keyring.key_valid_type_is_str) == "valid", f"Value for {Keyring.key_valid_type_is_str} is not what it should be"
 
-        @vault.vaulter(varvault.Flags.permit_modifications, return_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(varvault.Flags.permit_modifications, output=Keyring.key_valid_type_is_str)
         def _set():
             return "new-modified-value"
         _set()
@@ -125,7 +140,7 @@ class TestVault:
 
         new_vault = varvault.create(varvault.Flags.permit_modifications, keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @new_vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        @new_vault.manual(output=Keyring.key_valid_type_is_str)
         def _set():
             return "new-modified-value-gen-2"
         _set()
@@ -141,7 +156,7 @@ class TestVault:
             logger.info(f"Expected error received; test passed: {e}")
 
         try:
-            @vault.vaulter(return_keys=Keyring.key_valid_type_is_int)
+            @vault.manual(output=Keyring.key_valid_type_is_int)
             def _set():
                 return 1
             _set()
@@ -205,17 +220,17 @@ class TestVault:
         except Exception as e:
             logger.info(f"Expected error received; test passed: {e}")
 
-    def test_clean_return_keys(self):
+    def test_clean_output_keys(self):
         vault_new = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(output=Keyring.key_valid_type_is_str)
         def _set():
             return "valid"
         _set()
 
         assert vault_new.get(Keyring.key_valid_type_is_str) == "valid"
 
-        @vault_new.vaulter(varvault.Flags.clean_return_keys, return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(varvault.Flags.clean_output_keys, output=Keyring.key_valid_type_is_str)
         def _clean():
             return
 
@@ -227,7 +242,7 @@ class TestVault:
         extra_key1 = varvault.Key("extra_key1", valid_type=dict)
         vault_new = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"), extra_key1=varvault.Key("extra_key1", valid_type=dict))
 
-        @vault_new.vaulter(return_keys=extra_key1)
+        @vault_new.manual(output=extra_key1)
         def _set_invalid():
             return [1, 2, 3]
         try:
@@ -237,12 +252,12 @@ class TestVault:
             assert "Key 'extra_key1' requires type to be '<class 'dict'>'" in str(e), f"Unexpected error message: {e}"
             logger.info(f"Expected error received; test passed: {e}")
 
-        @vault_new.vaulter(return_keys=extra_key1)
+        @vault_new.manual(output=extra_key1)
         def _set_valid():
             return {"a": 1, "b": 2, "c": 3}
         _set_valid()
 
-        @vault_new.vaulter(varvault.Flags.clean_return_keys, return_keys=extra_key1)
+        @vault_new.manual(varvault.Flags.clean_output_keys, output=extra_key1)
         def _clean():
             return
         _clean()
@@ -253,7 +268,7 @@ class TestVault:
         tuple_item = varvault.Key("tuple_item", valid_type=tuple)
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"), tuple_item=tuple_item)
 
-        @vault.vaulter(varvault.Flags.return_tuple_is_single_item, return_keys=tuple_item)
+        @vault.manual(varvault.Flags.return_tuple_is_single_item, output=tuple_item)
         def _set():
             return 1, 2, 3
         _set()
@@ -263,7 +278,7 @@ class TestVault:
 
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"), tuple_item=tuple_item)
 
-        @vault.vaulter(return_keys=tuple_item)
+        @vault.manual(output=tuple_item)
         def _set():
             return 1, 2, 3
         _set()
@@ -271,12 +286,12 @@ class TestVault:
         assert tuple_item in vault, f"No flag: No {tuple_item} found in vault"
         assert vault.get(tuple_item) == (1, 2, 3), "No flag: Missmatch"
 
-    def test_split_return_keys(self):
+    def test_split_output_keys(self):
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
         vault_secondary = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new_secondary, mode="w"))
 
-        @vault.vaulter(varvault.Flags.split_return_keys, return_keys=Keyring.key_valid_type_is_str)
-        @vault_secondary.vaulter(varvault.Flags.split_return_keys, return_keys=Keyring.key_valid_type_is_int)
+        @vault.manual(varvault.Flags.split_output_keys, output=Keyring.key_valid_type_is_str)
+        @vault_secondary.manual(varvault.Flags.split_output_keys, output=Keyring.key_valid_type_is_int)
         def _set():
             return varvault.MiniVault({Keyring.key_valid_type_is_str: "valid", Keyring.key_valid_type_is_int: 1})
         _set()
@@ -290,7 +305,7 @@ class TestVault:
     def test_return_key_can_be_missing(self):
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        @vault.manual(output=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def _set_failed():
             return "valid"
 
@@ -301,18 +316,18 @@ class TestVault:
         except Exception:
             logger.info("Expected error received; test passed")
 
-        @vault.vaulter(varvault.Flags.return_key_can_be_missing, return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        @vault.manual(varvault.Flags.output_key_can_be_missing, output=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def _set_failed_again():
             return "valid"
 
         try:
             _set_failed_again()
-            pytest.fail(f"Managed to set a single variable when {varvault.Flags.return_key_can_be_missing} is defined; "
+            pytest.fail(f"Managed to set a single variable when {varvault.Flags.output_key_can_be_missing} is defined; "
                         f"Should have failed saying return var must be of type {varvault.MiniVault}")
         except Exception:
             logger.info("Expected error received; test passed")
 
-        @vault.vaulter(varvault.Flags.return_key_can_be_missing, return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        @vault.manual(varvault.Flags.output_key_can_be_missing, output=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def _set_working():
             return varvault.MiniVault({Keyring.key_valid_type_is_str: "valid"})
 
@@ -324,7 +339,7 @@ class TestVault:
     def test_validate_types_in_minivault_return_values(self):
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        @vault.manual(output=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def _set_failed():
             return varvault.MiniVault({Keyring.key_valid_type_is_str: 1, Keyring.key_valid_type_is_int: "invalid"})
         try:
@@ -405,7 +420,7 @@ class TestVault:
             vault.insert(KeyringKeyValidationFunction.int_must_be_even_number, 1)
         assert "must_be_even" in str(e.value)
 
-        @vault.vaulter(return_keys=KeyringKeyValidationFunction.int_must_be_even_number)
+        @vault.manual(output=KeyringKeyValidationFunction.int_must_be_even_number)
         def set_failed():
             return 5
         with pytest.raises(varvault.ValidatorException) as e:
@@ -423,7 +438,7 @@ class TestVault:
             vault.insert(KeyringKeyValidationFunction.validator_returns_no_bool, 1)
         assert "The return value is of type" in str(e.value)
 
-        @vault.vaulter(varvault.Flags.permit_modifications, return_keys=KeyringKeyValidationFunction.int_must_be_even_number)
+        @vault.manual(varvault.Flags.permit_modifications, output=KeyringKeyValidationFunction.int_must_be_even_number)
         def set():
             return 4
         set()
@@ -449,7 +464,7 @@ class TestVault:
     def test_add_minivault_function(self):
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(return_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        @vault.manual(output=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def insert():
             mv = varvault.MiniVault()
             mv.add(Keyring.key_valid_type_is_str, "valid")
@@ -508,7 +523,7 @@ class TestVault:
 
         assert Keyring.key_valid_type_is_int not in vault
 
-        @vault.vaulter(input_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        @vault.manual(input=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def noflag(**kwargs):
             pass
 
@@ -518,7 +533,7 @@ class TestVault:
         except:
             pass
 
-        @vault.vaulter(varvault.Flags.input_key_can_be_missing, input_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        @vault.manual(varvault.Flags.input_key_can_be_missing, input=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def withflag(key_valid_type_is_str: str = None, key_valid_type_is_int: int = None):
             key_valid_type_is_int = key_valid_type_is_int or 1
             assert key_valid_type_is_str == "valid"
@@ -567,28 +582,28 @@ class TestVault:
         vault.insert(Keyring.key_valid_type_is_str, "valid")
         vault.insert(Keyring.key_valid_type_is_int, 1)
 
-        @vault.vaulter()
+        @vault.manual()
         def fn_pure_kw_only(*, key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
             assert key_valid_type_is_str == "valid"
             assert key_valid_type_is_int == 1
 
         fn_pure_kw_only()
 
-        @vault.vaulter()
+        @vault.manual()
         def fn_pure_kw_or_positional(key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
             assert key_valid_type_is_str == "valid"
             assert key_valid_type_is_int == 1
 
         fn_pure_kw_or_positional()
 
-        @vault.vaulter(input_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(input=Keyring.key_valid_type_is_str)
         def fn_mixed(key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
             assert key_valid_type_is_str == "valid"
             assert key_valid_type_is_int == 1
 
         fn_mixed()
 
-        @vault.vaulter()
+        @vault.manual()
         def fn_pure_with_args(a1, key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
             assert a1 == 3.14
             assert key_valid_type_is_str == "valid"
@@ -596,7 +611,7 @@ class TestVault:
 
         fn_pure_with_args(3.14)
 
-        @vault.vaulter(input_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(input=Keyring.key_valid_type_is_str)
         def fn_mixed_with_args(a1, key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
             assert a1 == 3.14
             assert key_valid_type_is_str == "valid"
@@ -605,7 +620,7 @@ class TestVault:
         fn_mixed_with_args(3.14)
 
         try:
-            @vault.vaulter()
+            @vault.manual()
             def fn_with_typo(key_valid_type_is_string=varvault.AssignedByVault, key_valid_type_is_integer=varvault.AssignedByVault):  # Note the typos in the key names
                 assert key_valid_type_is_string is None
                 assert key_valid_type_is_integer is None
@@ -614,7 +629,7 @@ class TestVault:
             pass
 
         try:
-            @vault.vaulter()
+            @vault.manual()
             def fn_faulty_default_assignment(key_valid_type_is_str=None, key_valid_type_is_int=None):
                 assert key_valid_type_is_str == "valid"
                 assert key_valid_type_is_int == 1
@@ -623,7 +638,7 @@ class TestVault:
             pass
 
         try:
-            @vault.vaulter()
+            @vault.manual()
             def fn_mixed_faulty_default_assignment(key_valid_type_is_str=None, key_valid_type_is_integer=varvault.AssignedByVault):
                 assert key_valid_type_is_str == "valid"
                 assert key_valid_type_is_integer == 1
@@ -653,7 +668,7 @@ class TestVault:
             k2 = varvault.Key("k2")
             k3 = varvault.Key("k3")
         vault = varvault.create(keyring=KeyringTemporary, name="vault")
-        @vault.vaulter(return_keys=(KeyringTemporary.k1, KeyringTemporary.k2, KeyringTemporary.k3))
+        @vault.manual(output=(KeyringTemporary.k1, KeyringTemporary.k2, KeyringTemporary.k3))
         def _set():
             return 1, "valid", 3.14
 
@@ -666,20 +681,20 @@ class TestVault:
 
         _set()
 
-        @vault.vaulter(input_keys=(KeyringTemporary.k1, KeyringTemporary.k2))
+        @vault.manual(input=(KeyringTemporary.k1, KeyringTemporary.k2))
         def _use_first(k1=varvault.AssignedByVault, k2=varvault.AssignedByVault):
             assert k1 == 1
             assert k2 == "valid"
 
         _use_first()
 
-        @vault.vaulter(input_keys=KeyringTemporary.k3)
+        @vault.manual(input=KeyringTemporary.k3)
         def _use_second(k3=varvault.AssignedByVault):
             assert k3 == 3.14
 
         _use_second()
 
-        @vault.vaulter(varvault.Flags.permit_modifications, input_keys=KeyringTemporary.k3, return_keys=KeyringTemporary.k3)
+        @vault.manual(varvault.Flags.permit_modifications, input=KeyringTemporary.k3, output=KeyringTemporary.k3)
         def _override(k3):
             assert k3 == 3.14
             return k3 * 2
@@ -699,7 +714,7 @@ class TestVault:
                                 name="vault",
                                 resource=varvault.JsonResource(vault_file_new, mode="w"))
 
-        @vault.vaulter(varvault.Flags.input_key_can_be_missing, input_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(varvault.Flags.input_key_can_be_missing, input=Keyring.key_valid_type_is_str)
         def _use(key_valid_type_is_str=varvault.AssignedByVault):
             assert not key_valid_type_is_str
             assert key_valid_type_is_str is None, f"It's {type(key_valid_type_is_str)}, not {None}, which is what it should be"
@@ -720,7 +735,7 @@ class TestVault:
         vault = varvault.create(keyring=Keyring, name="vault")
 
         # Define the lambda function that will be used to set the value of the key
-        setter: Callable = vault.lambdavaulter(lambda: 1, return_keys=Keyring.key_valid_type_is_int)
+        setter: Callable = vault.lambdavaulter(lambda: 1, output_keys=Keyring.key_valid_type_is_int)
         assert callable(setter)
 
         # Define the lambda function that will be used to get the value of the key. Note that the name of the input variable is identical to the name of the key.
@@ -816,14 +831,14 @@ class TestVault:
         # For coverage
         vault = varvault.create(keyring=Keyring)
         with pytest.raises(NotImplementedError) as e:
-            vault.vault.put({Keyring.key_valid_type_is_str: "valid"})
+            vault._put({Keyring.key_valid_type_is_str: "valid"})
         assert "Not implemented" in str(e.value.args[0]), e
 
     def test_vaulted_function_raises_exception(self):
         vault = varvault.create(keyring=Keyring)
         vault.insert(Keyring.key_valid_type_is_str, "valid")
 
-        @vault.vaulter(input_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(input=Keyring.key_valid_type_is_str)
         async def async_func(id, key_valid_type_is_str: str = varvault.AssignedByVault):
             raise ValueError(key_valid_type_is_str)
 
@@ -831,7 +846,7 @@ class TestVault:
             varvault.concurrent_execution(async_func, [1])
         assert "valid" in str(e.value.args[0]), e
 
-        @vault.vaulter(input_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(input=Keyring.key_valid_type_is_str)
         def func(key_valid_type_is_str: str = varvault.AssignedByVault):
             raise ValueError(key_valid_type_is_str)
 
@@ -843,7 +858,7 @@ class TestVault:
         vault = varvault.create(keyring=Keyring)
         vault.insert(Keyring.key_valid_type_is_str, "valid")
 
-        @vault.vaulter(varvault.Flags.no_error_logging, input_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(varvault.Flags.no_error_logging, input=Keyring.key_valid_type_is_str)
         async def async_func(id, key_valid_type_is_str: str = varvault.AssignedByVault):
             raise ValueError(key_valid_type_is_str)
 
@@ -851,7 +866,7 @@ class TestVault:
             varvault.concurrent_execution(async_func, [1])
         assert "valid" in str(e.value.args[0]), e
 
-        @vault.vaulter(varvault.Flags.no_error_logging, input_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(varvault.Flags.no_error_logging, input=Keyring.key_valid_type_is_str)
         def func(key_valid_type_is_str: str = varvault.AssignedByVault):
             raise ValueError(key_valid_type_is_str)
 
@@ -866,7 +881,7 @@ class TestVault:
         assert "is not of type" in str(e.value.args[0]), e
 
         with pytest.raises(TypeError) as e:
-            @vault.vaulter(varvault.Flags.permit_modifications.value, return_keys=Keyring.key_valid_type_is_str)
+            @vault.manual(varvault.Flags.permit_modifications.value, output=Keyring.key_valid_type_is_str)
             def func():
                 return "valid"
             func()
@@ -878,7 +893,7 @@ class TestVault:
             key_valid_type_is_str = varvault.Key("key_valid_type_is_str", valid_type=str, can_be_none=True)
         vault = varvault.create(keyring=Keyring)
         with pytest.raises(ValueError) as e:
-            @vault.vaulter(varvault.Flags.return_values_cannot_be_none, return_keys=KeyringTemp.key_valid_type_is_str)
+            @vault.manual(varvault.Flags.return_values_cannot_be_none, output=KeyringTemp.key_valid_type_is_str)
             def func():
                 return None
             func()
@@ -916,7 +931,7 @@ class TestVault:
         vault.insert(KeyringTemp.key_no_valid_type, "valid")
         vault.insert(KeyringTemp.key_special_valid_type, Temp("a1", "a2"))
 
-        @vault.vaulter(varvault.Flags.clean_return_keys, return_keys=(KeyringTemp.key_no_valid_type, KeyringTemp.key_special_valid_type))
+        @vault.manual(varvault.Flags.clean_output_keys, output=(KeyringTemp.key_no_valid_type, KeyringTemp.key_special_valid_type))
         def clean():
             return
 
@@ -1005,7 +1020,7 @@ class TestVault:
 
     def test_resource_invalid_value_read(self):
         resource = varvault.JsonResource(vault_file_new, mode="w")
-        resource.create_resource()
+        resource.create()
         open(vault_file_new, "w").write("invalid")
 
         try:
@@ -1014,12 +1029,12 @@ class TestVault:
             assert "Failed to read from the resource" in str(e), e
         resource = varvault.JsonResource(vault_file_new, mode="r")
         with pytest.raises(varvault.ResourceNotFoundError) as e:
-            resource.create_resource()
+            resource.create()
         assert "Unable to read from resource at" in str(e.value.args[0]), e
 
     def test_append_resource_mode(self):
         resource = varvault.JsonResource(vault_file_new, mode="a")
-        resource.create_resource()
+        resource.create()
         resource.write({"key": "value"})
         resource = varvault.JsonResource(vault_file_new, mode="r")
         assert resource.read() == {"key": "value"}, resource.read()

@@ -33,14 +33,14 @@ class TestLiveUpdate:
         vault_new = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w+"))
         vault_from = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="r+"))
 
-        @vault_new.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        @vault_new.manual(output=Keyring.key_valid_type_is_str)
         def _set():
             return "valid"
         _set()
 
         assert Keyring.key_valid_type_is_str not in vault_from, f"{Keyring.key_valid_type_is_str} already in the vault; This should not be the case"
 
-        @vault_from.vaulter(input_keys=Keyring.key_valid_type_is_str)
+        @vault_from.manual(input=Keyring.key_valid_type_is_str)
         def _get(**kwargs):
             v = kwargs.get(Keyring.key_valid_type_is_str)
             assert v == "valid", f"Value {v} is not correct; Live-update doesn't work"
@@ -49,7 +49,7 @@ class TestLiveUpdate:
     def test_live_update_on_main_vault(self):
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w+"))
 
-        @vault.vaulter(return_keys=Keyring.key_valid_type_is_str)
+        @vault.manual(output=Keyring.key_valid_type_is_str)
         def _set():
             return "valid"
         _set()
@@ -62,7 +62,7 @@ class TestLiveUpdate:
 
         assert Keyring.key_valid_type_is_int not in vault, f"{Keyring.key_valid_type_is_int} already in vault; This should not be possible"
 
-        @vault.vaulter(input_keys=Keyring.key_valid_type_is_int)
+        @vault.manual(input=Keyring.key_valid_type_is_int)
         def _get(**kwargs):
             key_valid_type_is_int = kwargs.get(Keyring.key_valid_type_is_int)
             assert key_valid_type_is_int == 1
@@ -98,24 +98,24 @@ class TestLiveUpdate:
         t.start()
         t.join()
 
-        @vault_outer.vaulter(input_keys=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+        @vault_outer.manual(input=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
         def validate(key_valid_type_is_str=None, key_valid_type_is_int=None):
             assert key_valid_type_is_str == "valid"
             assert key_valid_type_is_int == 1
         validate()
 
     def test_resource_live_update(self):
-        fh = varvault.JsonResource(vault_file_new, mode="w+")
-        assert not fh.exists()
-        fh.create_resource()
-        assert fh.exists()
-        pre_state = fh.state
+        resource = varvault.JsonResource(vault_file_new, mode="w+")
+        assert not resource.exists()
+        resource.create()
+        assert resource.exists()
+        pre_state = resource.state
         json.dump({Keyring.key_valid_type_is_str: "valid", Keyring.key_valid_type_is_int: 1}, open(vault_file_new, "w"))
-        assert fh.resource_has_changed()
-        assert fh.cached_state != pre_state
-        data = fh.read()
+        assert resource.resource_has_changed()
+        assert resource.cached_state != pre_state
+        data = resource.read()
         assert data[Keyring.key_valid_type_is_str] == "valid"
         assert data[Keyring.key_valid_type_is_int] == 1
-        fh.update_state()
+        resource.update_state()
 
-        assert fh.last_known_state == fh.cached_state
+        assert resource.last_known_state == resource.cached_state

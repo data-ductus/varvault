@@ -142,7 +142,7 @@ class BaseResource(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def create_resource(self):
+    def create(self):
         """Meant to create the resource to store the vault in a database."""
         raise NotImplementedError()
 
@@ -166,7 +166,7 @@ class BaseResource(abc.ABC):
     # Write
     # ================================================================================================================
     def write(self, vault: dict) -> None:
-        f"""Writes the vault to the database by calling the implemented '{self.do_write}' method."""
+        f"""Writes the vault to the database by calling the implemented '{self.do_write}' method. Not meant to be overridden."""
         if not vault:
             # No point writing an empty dict and it's not the job of this method to create the file
             return
@@ -176,7 +176,7 @@ class BaseResource(abc.ABC):
             return
 
         if not self.resource:
-            self.create_resource()
+            self.create()
         try:
             with self.lock:
                 self.do_write(vault)
@@ -203,9 +203,9 @@ class BaseResource(abc.ABC):
     # Read
     # ================================================================================================================
     def read(self) -> Dict:
-        f"""Reads the vault from the database by calling the implemented '{self.do_read}' method."""
+        f"""Reads the vault from the database by calling the implemented '{self.do_read}' method. Not meant to be overridden."""
         if not self.resource:
-            self.create_resource()
+            self.create()
         with self.lock:
             if self.exists():
                 try:
