@@ -409,3 +409,21 @@ class TestSubscriber:
             vault.insert(KeyringSubscriber.trigger, "go-again", varvault.Flags.permit_modifications)
         # This should br triggered by the decorated function, hence why we check KeyringSubscriber.first is in the error string, not KeyringSubscriber.trigger.
         assert f"Key {KeyringSubscriber.first} already exists in the vault" in str(e.value)
+
+    def test_keyless_automatic(self):
+        vault = varvault.create(keyring=KeyringSubscriber, resource=varvault.JsonResource(vault_file_new, mode="w"))
+
+        @vault.automatic(output=(KeyringSubscriber.first,))
+        def first():
+            return "first"
+
+        assert vault.get(KeyringSubscriber.first) == "first"
+
+        @vault.automatic(threaded=True, output=(KeyringSubscriber.second,))
+        def second():
+            return "second"
+
+        while KeyringSubscriber.second not in vault:
+            pass
+
+        assert vault.get(KeyringSubscriber.second) == "second"
