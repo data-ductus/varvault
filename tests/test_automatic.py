@@ -115,14 +115,19 @@ class TestSubscriber:
     def test_subscriber_threaded(self):
         vault = varvault.create(keyring=KeyringSubscriber, resource=varvault.JsonResource(vault_file_new, mode="w"))
         called_first = False
+        num_calls_first = 0
         called_second = False
+        num_calls_second = 0
         called_third = False
+        num_calls_third = 0
         sleep_dur = 2
 
         @vault.automatic(threaded=True, input=KeyringSubscriber.trigger, output=KeyringSubscriber.first)
         def one(**kwargs):
             logger.info("one")
             nonlocal called_first
+            nonlocal num_calls_first
+            num_calls_first += 1
             called_first = True
             time.sleep(sleep_dur)
             return "first"
@@ -131,6 +136,8 @@ class TestSubscriber:
         def two(**kwargs):
             logger.info("two")
             nonlocal called_second
+            nonlocal num_calls_second
+            num_calls_second += 1
             called_second = True
             time.sleep(sleep_dur)
             return "second"
@@ -139,6 +146,8 @@ class TestSubscriber:
         def three(**kwargs):
             logger.info("three")
             nonlocal called_third
+            nonlocal num_calls_third
+            num_calls_third += 1
             called_third = True
             time.sleep(sleep_dur)
             return "third"
@@ -166,11 +175,87 @@ class TestSubscriber:
         assert called_second and vault.get(KeyringSubscriber.second) == "second"
         assert called_third and vault.get(KeyringSubscriber.third) == "third"
 
+        assert num_calls_first == 1
+        assert num_calls_second == 1
+        assert num_calls_third == 1
+
         with pytest.raises(ValueError) as e:
             @vault.automatic()
             async def async_func():
                 pass
         assert f"Async subscriber functions do not work because async functions cannot truly run in the background. Use {vault.automatic.__name__} with 'threaded=True' instead." in str(e.value)
+
+    def test_subscriber_threaded_existing_vault(self):
+        vault = varvault.create(keyring=KeyringSubscriber, resource=varvault.JsonResource(vault_file_new, mode="w"))
+        vault.insert(KeyringSubscriber.trigger, "go")
+
+        called_first = False
+        num_calls_first = 0
+        called_second = False
+        num_calls_second = 0
+        called_third = False
+        num_calls_third = 0
+        sleep_dur = 2
+
+        vault_recreated = varvault.create(keyring=KeyringSubscriber, resource=varvault.JsonResource(vault_file_new, mode="a"))
+
+        @vault_recreated.automatic(threaded=True, input=KeyringSubscriber.trigger, output=KeyringSubscriber.first)
+        def one(**kwargs):
+            logger.info("one")
+            nonlocal called_first
+            nonlocal num_calls_first
+            num_calls_first += 1
+            called_first = True
+            time.sleep(sleep_dur)
+            return "first"
+
+        @vault_recreated.automatic(threaded=True, input=KeyringSubscriber.trigger, output=KeyringSubscriber.second)
+        def two(**kwargs):
+            logger.info("two")
+            nonlocal called_second
+            nonlocal num_calls_second
+            num_calls_second += 1
+            called_second = True
+            time.sleep(sleep_dur)
+            return "second"
+
+        @vault_recreated.automatic(threaded=True, input=KeyringSubscriber.trigger, output=KeyringSubscriber.third)
+        def three(**kwargs):
+            logger.info("three")
+            nonlocal called_third
+            nonlocal num_calls_third
+            num_calls_third += 1
+            called_third = True
+            time.sleep(sleep_dur)
+            logger.info("three done")
+            return "third"
+
+        @vault_recreated.automatic(input=(KeyringSubscriber.first, KeyringSubscriber.second, KeyringSubscriber.third),
+                                   output=KeyringSubscriber.final)
+        def final(first, second, third):
+            return first + second + third
+
+        # If this fails, it's probably due to I/O contention. Try increasing the sleep duration.
+        # KeyringSubscriber.final will be written to the vault sooner than it seems, but the different automatic functions
+        # will lock the vault when they write, so a short sleep will mean the effect of I/O has a larger impact on the result.
+        # Try increasing and lowering the sleep duration to see how it affects the duration of the test.
+
+        logger.info("Waiting for final...")
+        while KeyringSubscriber.final not in vault_recreated:
+            pass
+        logger.info("Final value found in vault")
+
+        vault_recreated.await_running_tasks(timeout=sleep_dur * 3, exception=TimeoutError(f"All tasks should have completed within {sleep_dur * 3} seconds. Methods appear to run in sequence"))
+
+        assert len(vault_recreated.running_tasks) == 0, "All tasks should have completed and not be listed as running"
+        # All functions should have been called
+        assert called_first and vault_recreated.get(KeyringSubscriber.first) == "first"
+        assert called_second and vault_recreated.get(KeyringSubscriber.second) == "second"
+        assert called_third and vault_recreated.get(KeyringSubscriber.third) == "third"
+
+        assert num_calls_first == 1
+        assert num_calls_second == 1
+        assert num_calls_third == 1
 
     def test_subscriber_with_existing_vault(self):
         vault = varvault.create(keyring=KeyringSubscriber, resource=varvault.JsonResource(vault_file_new, mode="w"))

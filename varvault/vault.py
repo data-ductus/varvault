@@ -346,14 +346,14 @@ class VarVault(dict):
                     self.functions_as_automatics[key] = list()
                 self.functions_as_automatics[key].append(f)
                 self.keys_used_by_automatics[f].append(key)
-            self._dispatch_subscribers(input)
+            self._dispatch_subscriber(f, input, threaded)
             return f
 
         return wrap_outer
 
     def purge_stopped_thread(self, subscriber_thread: SubscriberThread):
         if subscriber_thread in self.running_tasks:
-            self.logger.info(f"Removing stopped thread {subscriber_thread} from the running tasks")
+            self.logger.debug(f"Removing stopped thread for {subscriber_thread.subscriber.__name__} from the running tasks")
             self.running_tasks.remove(subscriber_thread)
 
     # ============================================================
@@ -688,12 +688,27 @@ class VarVault(dict):
                     else:
                         functions_to_dispatch.add(function)
         for function in threaded_functions_to_dispatch:
+            self._dispatch_subscriber(function, keys, threaded=True)
+
+        for function in functions_to_dispatch:
+            self._dispatch_subscriber(function, keys, threaded=False)
+
+    def _dispatch_subscriber(self, function: Callable, keys: List[Key], threaded: bool):
+        if not all(key in self for key in keys):
+            # May not dispatch; not all keys exist in the vault
+            return
+
+        conditional: Callable = self.automatic_conditionals[function]
+        if not conditional():
+            # May not dispatch; conditional is not met
+            return
+
+        if threaded:
             # Dispatch threaded functions.
             thread = SubscriberThread(function, self)
             self.running_tasks.add(thread)
             thread.start()
-
-        for function in functions_to_dispatch:
+        else:
             # Dispatch the function.
             function()
 

@@ -9,7 +9,7 @@ class SubscriberThread(threading.Thread):
 
     def run(self):
         from .vault import VarVault
-        self.varvault.logger.info(f"Starting subscriber thread for {self.subscriber.__name__}...")
+        self.varvault.logger.debug(f"Starting subscriber thread for {self.subscriber.__name__}...")
         self.subscriber()
         self.varvault: VarVault
         self.varvault.purge_stopped_thread(self)
