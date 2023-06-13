@@ -1,6 +1,6 @@
 import varvault
+import serialization
 import redis
-
 
 # creates a RedisResource that attempts to establishes a connection based on the IP:port provided
 # not used by anything, but maybe still useful
@@ -12,13 +12,13 @@ class DepreciatedRedisResource(varvault.BaseResource):
         port: int = 6379,
         db: int = 0,
         mode="a",
-        canWriteIfExists=True,
+        can_write_if_exists=True,
     ):
         pool = redis.ConnectionPool(host=IPaddress, port=port, db=db)
         self.redis_client = redis.Redis(connection_pool=pool)
 
         self.hasWriteAccess = bool()
-        self.canWriteIfExists = canWriteIfExists
+        self.canWriteIfExists = can_write_if_exists
 
         # diffrent usage modes for RedisResource
         if mode == "r":
@@ -43,7 +43,7 @@ class DepreciatedRedisResource(varvault.BaseResource):
         self.port = pool.connection_kwargs["port"]
         self.file_io = None
 
-    def getDict(self):
+    def get_dict(self):
         d = dict()
         keys = self.redis_client.keys("*")
         values = self.redis_client.mget(keys)
@@ -66,38 +66,38 @@ class DepreciatedRedisResource(varvault.BaseResource):
         except Exception as e:
             print(f"Error: {e}")
 
-    def getVar(self, __name) -> bytes | None:
+    def get_var(self, __name) -> bytes | None:
         return self.redis_client.get(__name)
 
-    def setVar(self, __name, __value) -> bool | None:
+    def set_var(self, __name, __value) -> bool | None:
         if not (self.redis_client.get(__name) is None):
             print(
-                "__init__.py, setVar() NOTE: you need write-access to write to an existing key-value pair"
+                "__init__.py, set_var() NOTE: you need write-access to write to an existing key-value pair"
             )
             return None
         return self.redis_client.set(__name, __value)
 
     # delete variables if their name is in names
-    def delVar(self, __names) -> bool:
+    def del_var(self, __names) -> bool:
         return self.redis_client.delete(__names)
 
     # extra funcitons that shouldn't be needed to work properly
     # WARNING: they are currently broken
 
     # # get variables from keys
-    # def getVarsFromKeyNames(self, __keys) -> bool | None:
+    # def get_vars_from_key_names(self, __keys) -> bool | None:
     #     return [bytes(item).decode('UTF-8') for item in self.redis_client.mget(__keys)]
 
-    # def getPair(self, __hash_name, __key) -> bool | None:
+    # def get_pair(self, __hash_name, __key) -> bool | None:
     #     return self.redis_client.hget(__hash_name, __key)
 
-    # def setPair(self, __hash_name, __key, __value) -> int:
+    # def set_pair(self, __hash_name, __key, __value) -> int:
     #     return self.redis_client.hset(__hash_name, __key, __value)
 
-    # def getSubList(self, __name, __start=0, __end=-1) -> list[bytes]:
+    # def get_sub_list(self, __name, __start=0, __end=-1) -> list[bytes]:
     #     return self.redis_client.lrange(__name, __start, __end)
 
-    # def pushVars(self, __name, __values) -> int:
+    # def push_vars(self, __name, __values) -> int:
     #     return self.redis_client.rpush(__name, __values)
 
     # cleanup redis client
@@ -111,23 +111,15 @@ class DepreciatedRedisResource(varvault.BaseResource):
 
     # RedisResource ends
 
-    # baseResource begins
+    # BaseResource begins
     @property
     def state(self):
         """Returns the state of the vault, which is the checksum of the redis server content as a dictionary"""
-        result = self.getDict().items()
         import hashlib
 
         hash_md5 = hashlib.md5()
-        if result:
-            hash_md5.update("{\n".encode())
-            for key, value in result:
-                hash_md5.update(
-                    bytes(key.encode()) + b": " + bytes(value.encode()) + b",\n"
-                )
-            hash_md5.update("}".encode())
-        else:
-            hash_md5.update(b"{}")
+        for key, value in self.get_dict().items():
+            hash_md5.update(key + value)
         return hash_md5.hexdigest()
 
     @property
@@ -135,30 +127,26 @@ class DepreciatedRedisResource(varvault.BaseResource):
         """Meant to return the resource that stores the vault in some database such as a file."""
         return NotImplementedError()
 
-    def create_resource(self):
-        """Meant to create the resource to store the vault in a database."""
-        if not self.redis_client.ping():
-            self.setup_connection(self.host, self.port)
-
     @property
     def path(self):
         """Meant to return the path to the database that stores the vault."""
         return self.host, self.port
 
     def writable(self, obj: varvault.Dict) -> bool:
+        """Meant to return a bool that says if a given key-value pair in a dict can be successfully written to the database."""
         import socket
 
-        """Meant to return a bool that says if a given key-value pair in a dict can be successfully written to the database."""
         try:
             if not self.redis_client.ping():
                 return False
-
         except redis.exceptions.ConnectionError:
             print("Failed to connect to Redis server.")
         except socket.gaierror:
             print("Invalid IP address or hostname.")
         except Exception as e:
             print(f"Error: {e}")
+
+        return True
 
     def exists(self) -> bool:
         """Meant to return a bool which says if the server is connected"""
@@ -167,7 +155,7 @@ class DepreciatedRedisResource(varvault.BaseResource):
     def do_write(self, vault: dict) -> None:
         f"""write from {vault} to redis"""
         for key, value in vault.items():
-            if not self.setVar(key, value):
+            if not self.set_var(key, value):
                 print(f"Warning: key {key} failed to be set to {value}")
             else:
                 # continue
@@ -176,74 +164,53 @@ class DepreciatedRedisResource(varvault.BaseResource):
                 )
 
     def do_read(self):
-        return self.getDict()
+        return self.get_dict()
 
-    # baseResouce ends
-
-
-class KeyRing(varvault.Keyring):
-    arg1 = varvault.Key("arg1", valid_type=int)
-    arg2 = varvault.Key("arg2", valid_type=str)
-    arg3 = varvault.Key("arg3", valid_type=list, can_be_none=False)
-
-
-def serialize(value: str):
-    # if want to ignore the type add single quotes around the value
-    return str(value)
-
-
-def deserialize(value: str):
-    if type(value) == bytes:
-        value = value.decode()
-    if value is None:
-        return value
-    try:
-        return eval(value)
-    except SyntaxError:
-        if isinstance(value, str):
-            return value
-    except NameError:
-        if isinstance(value, str):
-            return value
-    raise Exception
-
+    # BaseResouce ends
 
 # Download database
-
 # convert to JsonResource
-
 # edit data
-
 # Upload database
 
 
 class RedisResource(varvault.BaseResource):
-    def __init__(self, path="localhost6379", mode=varvault.ResourceModes.WRITE):
-        self.connect()
-        super().__init__("path", mode)
+    def __init__(self, host='localhost', port: int=6379, db:int=0, mode=varvault.ResourceModes.READ):
+
+        pool = redis.ConnectionPool(host=host, port=port, db=db)
+        self.redis_client = redis.Redis(connection_pool=pool)
+        
+        try:
+            # connection timeout is 20 seconds
+            self.redis_client.ping()
+        except BaseException as redis_connection_refused:
+            print(redis_connection_refused)
+            raise
+
+        super().__init__(path="", mode=mode)
 
     def __del__(self):
         self.disconnect()
 
-    def connect(self, host: str = "localhost", port: int = 6379, db: int = 0):
-        pool = redis.ConnectionPool(host=host, port=port, db=db)
-        self.redis_client = redis.Redis(connection_pool=pool)
 
     def get(self) -> dict:
         d = {}
         keys = self.redis_client.keys("*")
         values = self.redis_client.mget(keys)
+        assert values is not None
 
-        for key, value in zip(keys, values):
-            value = deserialize(value)
-            d.update({key.decode(): value})
+        for key, value in zip(keys, values, strict=True):
+            key = key.decode()
+            value = value.decode()
+            value = serialization.deserialize(value)
+            d.update({key: value})
         return d
 
     def set(self, d: varvault.Dict):
-        if self.mode == varvault.ResourceModes.READ:
+        if self.mode == varvault.ResourceModes.READ.value:
             return
         for key, value in d.items():
-            value = serialize(value)
+            value = serialization.serialize(value)
             self.redis_client.set(key, value)
 
     def disconnect(self):
@@ -256,67 +223,37 @@ class RedisResource(varvault.BaseResource):
         """Meant to return the resource that stores the vault in some database such as a file."""
         return None
 
-    def state(self):
+    @property
+    def state(self) -> str:
         """Meant to return the state of the resource, such as a hash of the resource."""
+        d = sorted(self.get().items())
+
         import hashlib
+        return hashlib.md5(str(d).encode()).hexdigest()
 
-        hash_md5 = hashlib.md5()
-        for key, value in self.get().items():
-            hash_md5.update(key + value)
-        return hash_md5.hexdigest()
-
-    def create_resource(self):
-        """this is handled by the constructor instead."""
-        return None
-
+    # @property
     def path(self):
         """Meant to return the path to the database that stores the vault."""
-        return "localhost:6379"
+        raise NotImplementedError()
 
     def writable(self, obj: varvault.Dict) -> bool:
         """Meant to return a bool that says if a given key-value pair in a dict can be successfully written to the database."""
         return True
 
     def exists(self) -> bool:
-        """Meant to return a bool which says if the resource exists or not"""
-        return True
+        return self.redis_client.ping()
 
     def do_write(self, vault: dict):
-        if self.mode == varvault.ResourceModes.READ:
+        if self.mode == varvault.ResourceModes.READ.value:
             return
 
         # flushdb first if write is True
-        elif self.mode == varvault.ResourceModes.WRITE:
+        elif self.mode == varvault.ResourceModes.WRITE.value:
             self.redis_client.flushdb()
 
         # APPEND
         self.set(vault)
 
+
     def do_read(self):
-        self.get()
-
-
-class KeyRing(varvault.Keyring):
-    arg1 = varvault.Key("arg1", valid_type=int)
-    arg2 = varvault.Key("arg2", valid_type=int)
-
-
-redisResource_vault = varvault.create(keyring=KeyRing, resource=RedisResource())
-
-
-@redisResource_vault.vaulter(return_keys=[KeyRing.arg1, KeyRing.arg2])
-def create_args(arg1, arg2):
-    return arg1, arg2
-
-
-@redisResource_vault.vaulter(input_keys=[KeyRing.arg1, KeyRing.arg2])
-def use_args(arg1=varvault.AssignedByVault, arg2=varvault.AssignedByVault):
-    print(KeyRing.arg1, arg1, KeyRing.arg2, arg2)
-
-
-# everything is a string
-# https://stackoverflow.com/questions/32274113/difference-between-storing-integers-and-strings-in-redis
-if __name__ == "__main__":
-    create_args(98, 33)
-
-    use_args()
+        return self.get()

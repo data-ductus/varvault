@@ -1,6 +1,6 @@
 import sqlite3
+import serialization
 import varvault
-
 
 class DepreciatedSqliteResource(varvault.BaseResource):
     def __init__(
@@ -25,12 +25,12 @@ class DepreciatedSqliteResource(varvault.BaseResource):
 
         # super().__init__(path=port)
 
-    def getVar(self, __name):
+    def get_var(self, __name):
         return self.cursor.execute(
             f"SELECT value FROM {self.configuration} WHERE name=?", (__name,)
         )
 
-    def setVar(self, __name, __value):
+    def set_var(self, __name, __value):
         # self.cursor.execute()
         # if not len(self.c)
         self.cursor.execute(
@@ -40,7 +40,7 @@ class DepreciatedSqliteResource(varvault.BaseResource):
         self.id += 1
         self.connection.commit()
 
-    def getDict(self):
+    def get_dict(self):
         self.cursor.execute(f"SELECT * FROM {self.configuration}")
         d = {}
         ls = self.cursor.fetchall()
@@ -53,7 +53,7 @@ class DepreciatedSqliteResource(varvault.BaseResource):
     def __del__(self):
         self.cursor.close()
 
-    def testRun(self):
+    def test_run(self):
         connection = sqlite3.connect("test.db")
 
         cur = connection.cursor()
@@ -99,10 +99,6 @@ class DepreciatedSqliteResource(varvault.BaseResource):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
 
-    def create_resource(self):
-        """Meant to create the resource to store the vault in a database."""
-        raise NotImplementedError()
-
     def path(self):
         """Meant to return the path to the database that stores the vault."""
         raise NotImplementedError()
@@ -117,12 +113,10 @@ class DepreciatedSqliteResource(varvault.BaseResource):
         raise NotImplementedError()
 
     def do_write(self, vault: dict):
-        # An XML file must have exactly one root. We assign the vault to the root self.KEY
         pass
 
     def do_read(self):
         pass
-
 
 # anslut till databasen
 # kolla om databas namnet finns
@@ -133,46 +127,59 @@ class DepreciatedSqliteResource(varvault.BaseResource):
 # för varje par så updateras motsvarande värde
 # om det behöver finnas till att börja med så fixa det edge caset också
 
-
 class SqliteResource(varvault.BaseResource):
     def __init__(
         self,
-        path="varvault.db",
-        mode=varvault.ResourceModes.WRITE,
+        path,
+        mode=varvault.ResourceModes.READ,
         table="varvault_table",
-        is_updating_existing=True,
+        update_existing=True,
     ):
+        import os
+        if not os.path.exists(path):
+            open(path, 'w+')
+        
+        # local path to database file
         self.connection = sqlite3.connect(database=path)
-        self.database_file = path
+        
+        # mounted to a docker container with the path "root/db/[database file]"
+        # volume required in docker-compose.yml file in the container directory before the container is created
+        
+        self.local_path = path
         self.cursor = self.connection.cursor()
         self.table = table
-        self.is_updating_existing = is_updating_existing
+        self.update_existing = update_existing
 
-        super().__init__(path="Online Database", mode=mode)
+        super().__init__(path=path, mode=mode)
 
-    def Create(self):
+    def create(self):
         return None
 
+    @property
     def resource(self):
-        """Meant to return the resource that stores the vault in some database such as a file."""
-        raise NotImplementedError()
+        return self.cursor
 
-    def state(self):
+    @property
+    def state(self) -> str:
         """Meant to return the state of the resource, such as a hash of the resource."""
+        self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {self.table} (key VARCHAR(255) PRIMARY KEY, value VARCHAR(255))")
+        self.cursor.execute(f"SELECT * FROM {self.table}")
+        d = {}
+        for key, value in self.cursor.fetchall():
+            value = serialization.deserialize(value)
+            d.update({key: value})
+
+        # useful for compatibility with other resources state property
+        # does not store the new ordered dictionary
+        d = sorted(d.items())
+
         import hashlib
+        return hashlib.md5(str(d).encode()).hexdigest()
 
-        hash_md5 = hashlib.md5()
-        for chunk in self.connection.iterdump():
-            hash_md5.update(chunk)
-        return hash_md5.hexdigest()
-
-    def create_resource(self):
-        """Meant to create the resource to store the vault in a database."""
-        raise NotImplementedError("This is done using SqliteHandler's Constructor")
-
+    @property
     def path(self) -> str:
         """Meant to return the path to the database that stores the vault."""
-        return self.database_file
+        return self.local_path
 
     def writable(self, obj: varvault.Dict) -> bool:
         """Meant to return a bool that says if a given key-value pair in a dict can be successfully written to the database."""
@@ -180,100 +187,56 @@ class SqliteResource(varvault.BaseResource):
 
     def exists(self) -> bool:
         """Meant to return a bool which says if the resource exists or not"""
-        return True
+        import os
+        return os.path.exists(self.local_path)
 
     def do_write(self, vault: varvault.Dict):
         self.set(vault)
 
-    def do_read(self):
-        self.get()
+    def do_read(self) -> varvault.Dict:
+        return self.get()
 
     def __del__(self):
         self.disconnect()
 
     def get(self):
-        self.cursor.execute(
-            f"CREATE TABLE IF NOT EXISTS {self.table} (key VARCHAR(255) PRIMARY KEY, value VARCHAR(255))"
-        )
-        # if the table is found get it's content
-        d = {}
+        self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {self.table} (key VARCHAR(255) PRIMARY KEY, value VARCHAR(255))")
         self.cursor.execute(f"SELECT * FROM {self.table}")
-        broken_list = self.cursor.fetchall()
-        for row in broken_list:
-            _, key, value = row
-            d[key] = value
+
+        d = {}
+
+        for key, value in self.cursor.fetchall():
+            value = serialization.deserialize(value)
+            d.update({key: value})
 
         return d
 
     def set(self, dict: varvault.Dict):
-        if self.mode == varvault.ResourceModes.READ:
+        if self.mode == varvault.ResourceModes.READ.value:
             return
 
-        elif self.mode == varvault.ResourceModes.WRITE:
+        elif self.mode == varvault.ResourceModes.WRITE.value:
             self.cursor.execute(f"DROP TABLE IF EXISTS {self.table}")
 
-        # varvault.ResourceModes.APPEND
         self.cursor.execute(
             f"CREATE TABLE IF NOT EXISTS {self.table} (key VARCHAR(255) PRIMARY KEY, value VARCHAR(255))"
         )
         for key, value in dict.items():
             try:
+                value = serialization.serialize(value)
+                value = value.replace("'", '"')
                 self.cursor.execute(
                     f"INSERT INTO {self.table} VALUES ('{key}', '{value}')"
                 )
             except sqlite3.IntegrityError:
-                if self.is_updating_existing:
+                if self.update_existing:
                     self.cursor.execute(
-                        f"UPDATE {self.table} SET value=? WHERE key=?", (value, key)
+                        f"UPDATE {self.table} SET value=? WHERE key=?", (serialization.serialize(value), key)
                     )
         self.connection.commit()
+
 
     def disconnect(self):
         self.connection.commit()
         self.cursor.close()
         self.connection.close()
-
-    def testRun(self):
-        connection = sqlite3.connect(database="test.db")
-
-        cur = connection.cursor()
-
-        # Commit the changes to the database
-        connection.commit()
-
-        cur.execute("SELECT name FROM example_table WHERE id=?", (1,))
-        name = cur.fetchone()[0]
-        print(name)
-
-        cur.execute("UPDATE example_table SET age=? WHERE name=?", (36, "John Doe"))
-        cur.execute("SELECT * FROM example_table")
-        rows = cur.fetchall()
-        for row in rows:
-            print(row)
-
-        with open("example_table.sql", "w") as f:
-            for line in connection.iterdump():
-                f.write("%s\n" % line)
-
-
-class KeyRing(varvault.Keyring):
-    arg1 = varvault.Key("arg1", valid_type=str)
-    arg2 = varvault.Key("arg2", valid_type=str)
-
-
-sqliteHandler_vault = varvault.create(keyring=KeyRing, resource=SqliteResource())
-
-
-@sqliteHandler_vault.vaulter(return_keys=[KeyRing.arg1, KeyRing.arg2])
-def sql_create_args(arg1, arg2):
-    return arg1, arg2
-
-
-@sqliteHandler_vault.vaulter(input_keys=[KeyRing.arg1, KeyRing.arg2])
-def sql_use_args(arg1=varvault.AssignedByVault, arg2=varvault.AssignedByVault):
-    print(KeyRing.arg1, arg1, KeyRing.arg2, arg2)
-
-
-if __name__ == "__main__":
-    sql_create_args("9", "73483")
-    sql_use_args()
