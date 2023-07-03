@@ -121,7 +121,6 @@ if __name__ == "__main__":
 8. When a file such as this (see above) exists, it's very possible to re-create the same vault again from this file. 
    In order to re-create the same vault again simply do this: 
    ```python
-   from commons import *
    import varvault
 
    class Keyring(varvault.Keyring):
