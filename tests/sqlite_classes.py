@@ -1,140 +1,44 @@
 import sqlite3
-import serialization
+from typing import Dict
+
 import varvault
 
-class DepreciatedSqliteResource(varvault.BaseResource):
-    def __init__(
-        self,
-        database: str = "test.db",
-        port: int = 9771,
-        configuration: str = "configuration",
-    ):
-        self.id = 1
-        self.configuration = configuration
-        self.connection = sqlite3.connect(database=database)
-        self.cursor = self.connection.cursor()
+# TODO Work in progress, but is it worth it? Redis is the better solution
 
-        # create table with key/value pairs
-        try:
-            self.cursor.execute(
-                """CREATE TABLE conf
-                (id INTEGER PRIMARY KEY, name VARCHAR(255), value VARCHAR(255))"""
-            )
-        except sqlite3.OperationalError as o:
-            print(o)
+def hash_dict(any_dict: dict) -> str:
+    import hashlib
 
-        # super().__init__(path=port)
+    return hashlib.md5(str(any_dict).encode()).hexdigest()
 
-    def get_var(self, __name):
-        return self.cursor.execute(
-            f"SELECT value FROM {self.configuration} WHERE name=?", (__name,)
+
+def serialize(value):
+    if isinstance(value, str):
+        return "'" + value + "'"
+    elif isinstance(value, (bytes, int, list, tuple, dict, set, bool, type(None))):
+        return str(value)
+    else:
+        print(
+            f"Invalid type: {type(value)}, allowed types are: (bytes, int, tuple, list, dict, set, bool, NoneType)"
         )
 
-    def set_var(self, __name, __value):
-        # self.cursor.execute()
-        # if not len(self.c)
-        self.cursor.execute(
-            f"INSERT INTO {self.configuration} SET value=? WHERE name=?",
-            (__name, __value),
-        )
-        self.id += 1
-        self.connection.commit()
 
-    def get_dict(self):
-        self.cursor.execute(f"SELECT * FROM {self.configuration}")
-        d = {}
-        ls = self.cursor.fetchall()
-        for row in ls:
-            id, key, value = str(row).split("|")
-            d[key] = value
+def deserialize(value: str):
+    import ast
 
-        return d
+    try:
+        return ast.literal_eval(value)
+    except ValueError:
+        f"""Invalid value: {value} with type {type(value)}"""
+    except SyntaxError:
+        """Code injection detected."""
 
-    def __del__(self):
-        self.cursor.close()
-
-    def test_run(self):
-        connection = sqlite3.connect("test.db")
-
-        cur = connection.cursor()
-
-        cur.execute(
-            """CREATE TABLE example_table
-                    (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)"""
-        )
-        cur.execute("INSERT INTO example_table VALUES (1, 'John Doe', 35)")
-        cur.execute("INSERT INTO example_table VALUES (2, 'Jane Smith', 28)")
-        cur.execute("INSERT INTO example_table VALUES (3, 'Bob Johnson', 42)")
-
-        # Commit the changes to the database
-        connection.commit()
-
-        cur.execute("SELECT name FROM example_table WHERE id=?", (1,))
-        name = cur.fetchone()[0]
-        print(name)
-
-        cur.execute("UPDATE example_table SET age=? WHERE name=?", (36, "John Doe"))
-        cur.execute("SELECT * FROM example_table")
-        rows = cur.fetchall()
-        for row in rows:
-            print(row)
-
-        with open("example_table.sql", "w") as f:
-            for line in connection.iterdump():
-                f.write("%s\n" % line)
-
-        connection.close()
-
-    def resource(self):
-        """Meant to return the resource that stores the vault in some database such as a file."""
-        raise NotImplementedError()
-
-    def state(self):
-        """Meant to return the state of the resource, such as a hash of the resource."""
-        import hashlib
-
-        hash_md5 = hashlib.md5()
-        with open(self.path, "rb") as f:
-            for chunk in self.connection.iterdump():
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
-
-    def path(self):
-        """Meant to return the path to the database that stores the vault."""
-        raise NotImplementedError()
-
-    def writable(self, obj: varvault.Dict) -> bool:
-        """Meant to return a bool that says if a given key-value pair in a dict can be successfully written to the database."""
-        raise NotImplementedError()
-
-    def exists(self) -> bool:
-        """Meant to return a bool which says if the resource exists or not"""
-        return bool("Not implemented")
-        raise NotImplementedError()
-
-    def do_write(self, vault: dict):
-        pass
-
-    def do_read(self):
-        pass
-
-# anslut till databasen
-# kolla om databas namnet finns
-# finns det inte så skapa filen
-# finns den så anslut
-# get tar in hela tabellen och converterar den till en dict
-# set tar in en dict och skickar kommandon for varje nyckel-värde par
-# för varje par så updateras motsvarande värde
-# om det behöver finnas till att börja med så fixa det edge caset också
 
 class SqliteResource(varvault.BaseResource):
-    def __init__(
-        self,
-        path,
-        mode=varvault.ResourceModes.READ,
-        table="varvault_table",
-        update_existing=True,
-    ):
+    def __init__(self,
+                 path,
+                 mode=varvault.ResourceModes.READ,
+                 table="varvault_table",
+                 update_existing=True,):
         import os
         if not os.path.exists(path):
             open(path, 'w+')
@@ -173,15 +77,14 @@ class SqliteResource(varvault.BaseResource):
         # does not store the new ordered dictionary
         d = sorted(d.items())
 
-        import hashlib
-        return hashlib.md5(str(d).encode()).hexdigest()
+        return serialization.hash_dict(d)
 
     @property
     def path(self) -> str:
         """Meant to return the path to the database that stores the vault."""
         return self.local_path
 
-    def writable(self, obj: varvault.Dict) -> bool:
+    def writable(self, obj: Dict) -> bool:
         """Meant to return a bool that says if a given key-value pair in a dict can be successfully written to the database."""
         return True
 
@@ -190,10 +93,10 @@ class SqliteResource(varvault.BaseResource):
         import os
         return os.path.exists(self.local_path)
 
-    def do_write(self, vault: varvault.Dict):
+    def do_write(self, vault: Dict):
         self.set(vault)
 
-    def do_read(self) -> varvault.Dict:
+    def do_read(self) -> Dict:
         return self.get()
 
     def __del__(self):
@@ -211,7 +114,7 @@ class SqliteResource(varvault.BaseResource):
 
         return d
 
-    def set(self, dict: varvault.Dict):
+    def set(self, dict: Dict):
         if self.mode == varvault.ResourceModes.READ.value:
             return
 

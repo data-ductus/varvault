@@ -4,6 +4,7 @@ build
 twine
 xmltodict
 coverage
+redis
 pytest>=6.2.1
 pytest-html>=2.1.1
 pytest-metadata>=1.10.0
