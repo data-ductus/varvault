@@ -43,6 +43,12 @@ class TestVault:
         _set_valid()
         assert vault.get(Keyring.key_valid_type_is_str) == "valid-key"
 
+        @vault.manual(varvault.Flags.permit_modifications, input=Keyring.key_valid_type_is_str, output=Keyring.key_valid_type_is_str)
+        def _replace(key_valid_type_is_str):
+            return f"{key_valid_type_is_str}-replaced"
+
+        _replace()
+
         @vault.manual(output=Keyring.key_valid_type_is_int)
         def _set_invalid():
             return "invalid-key; must be int"
@@ -67,8 +73,6 @@ class TestVault:
 
         _set_valid()
         assert called
-
-
 
     def test_put(self):
         vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))

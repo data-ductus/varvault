@@ -131,6 +131,7 @@ class VarVault(dict):
         self.automatic_conditionals: Dict[Callable, Callable] = dict()
         self.running_tasks: Set[SubscriberThread] = set()
         self.threaded_automatics = set()
+        self.exceptions = list()
 
         if initial_vars and isinstance(initial_vars, MiniVault):
             self._put(initial_vars)
@@ -355,6 +356,8 @@ class VarVault(dict):
         if subscriber_thread in self.running_tasks:
             self.logger.debug(f"Removing stopped thread for {subscriber_thread.subscriber.__name__} from the running tasks")
             self.running_tasks.remove(subscriber_thread)
+        if subscriber_thread.exception:
+            self.exceptions.append(subscriber_thread.exception)
 
     # ============================================================
     # insert
@@ -525,6 +528,9 @@ class VarVault(dict):
                 if exception:
                     raise exception
                 raise TimeoutError(f"Timeout of {timeout} seconds reached while waiting for no running tasks.")
+        if self.exceptions:
+            self.logger.error(f"Exception(s) occurred while waiting for running tasks to finish: {self.exceptions}. Raising last exception.")
+            raise self.exceptions.pop()
 
     # ============================================================
     # privates

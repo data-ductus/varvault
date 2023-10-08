@@ -257,6 +257,73 @@ class TestSubscriber:
         assert num_calls_second == 1
         assert num_calls_third == 1
 
+    def test_automatic_threaded_with_errors(self):
+        vault = varvault.create(varvault.Flags.debug, keyring=KeyringSubscriber, resource=varvault.JsonResource(vault_file_new, mode="w"))
+        @vault.automatic(threaded=True, input=KeyringSubscriber.trigger, output=KeyringSubscriber.first)
+        def one(**kwargs):
+            logger.info("one")
+            return "first"
+
+        @vault.automatic(threaded=True, input=KeyringSubscriber.first, output=KeyringSubscriber.second)
+        def two(**kwargs):
+            logger.info("two")
+            return "second"
+
+        @vault.automatic(threaded=True, input=KeyringSubscriber.second, output=KeyringSubscriber.third)
+        def three(**kwargs):
+            raise Exception("three")
+
+        vault.insert(KeyringSubscriber.trigger, "go")
+        try:
+            vault.await_running_tasks(timeout=10)
+            pytest.fail(f"Should have raised an exception in {three.__name__}")
+        except Exception as e:
+            assert "three" in str(e)
+
+    def test_automatic_threaded_with_sequential_flow(self):
+        """
+        This test will verify that the automatic decorator with the threaded flag set to True can run in sequence if each function should trigger the next one.
+        Using something like a guard-thread that makes sure all threads complete should NOT be necessary. await_running_tasks should be sufficient.
+        If this test fails, it could indicate a problem with ending all running tasks for the vault before triggering the next one in the sequence.
+        :return:
+        """
+        vault = varvault.create(keyring=KeyringSubscriber, resource=varvault.JsonResource(vault_file_new, mode="w"))
+
+        @vault.automatic(threaded=True, input=KeyringSubscriber.trigger, output=KeyringSubscriber.first)
+        def one(**kwargs):
+            logger.info("one")
+            return "first"
+
+        @vault.automatic(threaded=True, input=KeyringSubscriber.first, output=KeyringSubscriber.second)
+        def two(**kwargs):
+            logger.info("two")
+            return "second"
+
+        @vault.automatic(threaded=True, input=KeyringSubscriber.second, output=KeyringSubscriber.third)
+        def three(**kwargs):
+            logger.info("three")
+            return "third"
+
+        @vault.automatic(input=(KeyringSubscriber.first, KeyringSubscriber.second, KeyringSubscriber.third),
+                         output=KeyringSubscriber.final)
+        def final(first, second, third):
+            return first + second + third
+
+        @vault.manual(output=KeyringSubscriber.trigger)
+        def start():
+            return "go"
+
+        start()
+
+        vault.await_running_tasks(timeout=10)
+
+        assert len(vault.running_tasks) == 0, "All tasks should have completed and not be listed as running"
+
+        assert vault.get(KeyringSubscriber.first) == "first"
+        assert vault.get(KeyringSubscriber.second) == "second"
+        assert vault.get(KeyringSubscriber.third) == "third"
+        assert vault.get(KeyringSubscriber.final) == "firstsecondthird"
+
     def test_subscriber_with_existing_vault(self):
         vault = varvault.create(keyring=KeyringSubscriber, resource=varvault.JsonResource(vault_file_new, mode="w"))
         vault.insert(KeyringSubscriber.trigger, "go")
