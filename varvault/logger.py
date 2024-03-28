@@ -11,7 +11,8 @@ def get_logger(name, remove_existing_log_file=False):
                    logging.DEBUG: logging.PercentStyle(f'%(levelname)s - %(asctime)s %(name)s - %(message)s'),
                    logging.WARNING: logging.PercentStyle(f'%(levelname)s - %(asctime)s %(name)s - %(message)s'),
                    logging.ERROR: logging.PercentStyle(f'%(levelname)s - %(asctime)s %(name)s - %(message)s'),
-                   "DEFAULT": logging.PercentStyle(f'%(levelname)s - %(asctime)s %(name)s - %(message)s')}
+                   "DEFAULT": logging.PercentStyle(f'%(levelname)s - %(asctime)s %(name)s - %(message)s'),
+                   }
 
         def __init__(self):
             default_style = CustomFormat.FORMATS["DEFAULT"]

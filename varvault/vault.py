@@ -16,8 +16,10 @@ from .resource import BaseResource
 from .keyring import Keyring, Key
 from .logger import get_logger, configure_logger
 from .minivault import MiniVault
-from .subscriber_thread import SubscriberThread
-from .utils import concurrent_execution, AssignedByVault, assert_and_raise
+from .threadgroup import Automatic
+from .threadgroup import threaded_execution
+from .threadgroup import create_functions
+from .utils import AssignedByVault, assert_and_raise
 from .flags import Flags
 
 
@@ -44,10 +46,10 @@ class VarVault(dict):
     def _mv(self, mini: MiniVault):
         f"""{self._put} to add a MiniVault"""
 
-        async def _put(item):
+        def _put(item):
             key, value = item
             self.__setitem__(key, value)
-        concurrent_execution(_put, mini.items())
+        threaded_execution(create_functions(_put, mini.items()))
         self.write()
 
     @_put.register
@@ -128,8 +130,10 @@ class VarVault(dict):
         self.resource: BaseResource = resource
         self.functions_as_automatics: Dict[Key, List[Callable]] = dict()
         self.keys_used_by_automatics: Dict[Callable, List[Key]] = dict()
+        self.keys_provided_by_automatics: Dict[Callable, List[Key]] = dict()
+        self.flags_used_by_automatics: Dict[Callable, Set[Flags]] = dict()
         self.automatic_conditionals: Dict[Callable, Callable] = dict()
-        self.running_tasks: Set[SubscriberThread] = set()
+        self.running_tasks: Set[Automatic] = set()
         self.threaded_automatics = set()
         self.exceptions = list()
 
@@ -176,7 +180,7 @@ class VarVault(dict):
             # Probably some objects in the vault that cannot be serialized. Just return the string representation of the vault then.
             return self.__str__()
 
-    def log(self, msg: object, *args, level: int = logging.DEBUG, exception: BaseException = None, all_flags: Union[Set[Flags], Tuple[Flags]] = None):
+    def log(self, msg: object, *args, level: int = logging.DEBUG, exception: BaseException = None, all_flags: Tuple[Flags, ...] = None):
         if self.logger:
             all_flags = all_flags or self.flags
             assert isinstance(level, int), "Log level must be defined as an integer"
@@ -303,7 +307,7 @@ class VarVault(dict):
          keyring for this specific vault.
         :param output: Can be of type: {Key}, {list}, {tuple}. Default: {None}. Keys must be defined in the
          keyring for this specific vault.
-        :param condition: A function, like a lambda, that returns a boolean. If the function returns {False}, the subscriber will not be called even if the required keys exist in the vault.
+        :param condition: A function, like a lambda, that returns a boolean. If the function returns {False}, the automati function will not be called even if the required keys exist in the vault.
         :param threaded: If set to {True}, the subscriber will be called in a separate thread. This is useful if the function doesn't need to be monitored and takes long to run.
         :param flags: Optional argument for defining some flags for this vaulted function. Flags that have an effect:
          {Flags.debug},
@@ -323,8 +327,9 @@ class VarVault(dict):
                          TypeError(f"input_keys must be of type {Key}, {List} or {Tuple}"))
 
         assert_and_raise(not any(key in output for key in input),
-                         KeyError(f"input and output cannot contain the same keys. This would effectively mean that the function subscribes "
-                                  f"to itself and would run forever if {Flags.permit_modifications.name} is set, or crash if it's not set."))
+                         KeyError(f"input and output cannot contain the same keys. This would effectively mean that the function subscribes to itself. "
+                                  f"Automatic functions do not run if the output key is in the vault. "
+                                  f"To make automatic functions run in that case, you must set {Flags.auto_run_regardless_of_key_status}, but that would also make this function run forever."))
 
         all_flags = self._get_all_flags(*flags)
 
@@ -334,30 +339,33 @@ class VarVault(dict):
             [key.usages.add_return(func) for key in output]
             # Separate handling if the decorated function uses the coroutine API
             if asyncio.iscoroutinefunction(func):
-                raise ValueError(f"Async subscriber functions do not work because async functions cannot truly run in the background. Use {self.automatic.__name__} with 'threaded={True}' instead.")
+                raise ValueError(f"Function {func.__module__}.{func.__name__} appears to be defined as async. "
+                                 f"Async functions do not work with automatic because async functions cannot truly run in the background. "
+                                 f"Use {self.automatic.__name__} with 'threaded={True}' instead.")
 
             else:
                 f = self._inner_standard(func, *all_flags, input=input, output=output)
             if threaded:
                 self.threaded_automatics.add(f)
-            self.keys_used_by_automatics[f] = list()
+            self.keys_used_by_automatics[f] = input
+            self.keys_provided_by_automatics[f] = output
             self.automatic_conditionals[f] = condition
+            self.flags_used_by_automatics[f] = set(all_flags)
             for key in input:
-                if key not in self.functions_as_automatics:
-                    self.functions_as_automatics[key] = list()
+                self.functions_as_automatics[key] = list() if key not in self.functions_as_automatics else self.functions_as_automatics[key]
                 self.functions_as_automatics[key].append(f)
-                self.keys_used_by_automatics[f].append(key)
-            self._dispatch_subscriber(f, input, threaded)
+
+            self._dispatch_automatic(f, input, output, threaded, *all_flags)
             return f
 
         return wrap_outer
 
-    def purge_stopped_thread(self, subscriber_thread: SubscriberThread):
-        if subscriber_thread in self.running_tasks:
-            self.logger.debug(f"Removing stopped thread for {subscriber_thread.subscriber.__name__} from the running tasks")
-            self.running_tasks.remove(subscriber_thread)
-        if subscriber_thread.exception:
-            self.exceptions.append(subscriber_thread.exception)
+    def purge_stopped_thread(self, automatic_thread: Automatic):
+        if automatic_thread in self.running_tasks:
+            self.logger.debug(f"Removing stopped thread for {automatic_thread.automatic.__name__} from the running tasks")
+            self.running_tasks.remove(automatic_thread)
+        if automatic_thread.exception:
+            self.exceptions.append(automatic_thread.exception)
 
     # ============================================================
     # insert
@@ -397,19 +405,19 @@ class VarVault(dict):
         # Assert that key has correct type
         self._assert_keys_in_keyring(mini.keys())
 
-        async def run_modifiers(item: Tuple[Key, object]):
+        def run_modifiers(item: Tuple[Key, object]):
             key, value = item
             mini[key] = key.run_modifiers(value)
 
-        concurrent_execution(run_modifiers, mini.items())
+        threaded_execution(create_functions(run_modifiers, mini.items()))
 
-        async def assert_key_and_value_may_be_inserted(item: Tuple[Key, object]):
+        def assert_key_and_value_may_be_inserted(item: Tuple[Key, object]):
             key, value = item
             if Flags.is_set(Flags.return_values_cannot_be_none, *all_flags):
                 assert_and_raise(value is not None, ValueError(f"The value mapped to {key} is {None} and {Flags.return_values_cannot_be_none} is defined."))
 
             self._insert__assert_value_may_be_inserted(key, value, modifications_permitted=Flags.is_set(Flags.permit_modifications, *all_flags))
-        concurrent_execution(assert_key_and_value_may_be_inserted, mini.items())
+        threaded_execution(create_functions(assert_key_and_value_may_be_inserted, mini.items()))
 
         with self.lock:
             self.log("-------------------", all_flags=all_flags)
@@ -419,7 +427,7 @@ class VarVault(dict):
             self._put(mini)
 
             self.log("-----------------", all_flags=all_flags)
-        self._dispatch_subscribers(mini.keys())
+        self._dispatch_automatics(mini.keys())
 
     def _insert__assert_value_may_be_inserted(self, key: Key, value: object, modifications_permitted=False):
         # Validate that key doesn't already exist in the vault, or that modifications_permitted==True
@@ -659,22 +667,22 @@ class VarVault(dict):
                                                                                             f"exactly one input key and one output key."))
                 del self[input_keys[0]]
 
-            async def validate_keys_in_mini_vault(key, can_be_missing=False):
+            def validate_keys_in_mini_vault(key, can_be_missing=False):
                 assert key in mini or can_be_missing, f"Key {key} isn't present in MiniVault; keys in mini: {mini.keys()}. " \
                                                       f"You can set the vault-flag {Flags.output_key_can_be_missing} to skip this validation step"
-            concurrent_execution(validate_keys_in_mini_vault, output_keys, can_be_missing=Flags.is_set(Flags.output_key_can_be_missing, *all_flags))
+            threaded_execution(create_functions(validate_keys_in_mini_vault, output_keys, can_be_missing=Flags.is_set(Flags.output_key_can_be_missing, *all_flags)))
 
-            async def validate_keys_in_output_keys(key):
+            def validate_keys_in_output_keys(key):
                 assert key in output_keys, f"Key {key} isn't defined as an output-key; output keys: {output_keys}"
-            concurrent_execution(validate_keys_in_output_keys, mini.keys())
+            threaded_execution(create_functions(validate_keys_in_output_keys, mini.keys()))
 
             self.insert_minivault(mini, *all_flags)
 
-    def _dispatch_subscribers(self, keys: List[Key]):
+    def _dispatch_automatics(self, input: List[Key]):
         potential_functions_to_dispatch = set()
         functions_to_dispatch = set()
         threaded_functions_to_dispatch = set()
-        for key in keys:
+        for key in input:
             functions = self.functions_as_automatics.get(key, [])
             for function in functions:
                 potential_functions_to_dispatch.add(function)
@@ -694,14 +702,18 @@ class VarVault(dict):
                     else:
                         functions_to_dispatch.add(function)
         for function in threaded_functions_to_dispatch:
-            self._dispatch_subscriber(function, keys, threaded=True)
+            self._dispatch_automatic(function, input, self.keys_provided_by_automatics[function], True, *self.flags_used_by_automatics[function])
 
         for function in functions_to_dispatch:
-            self._dispatch_subscriber(function, keys, threaded=False)
+            self._dispatch_automatic(function, input, self.keys_provided_by_automatics[function], False, *self.flags_used_by_automatics[function])
 
-    def _dispatch_subscriber(self, function: Callable, keys: List[Key], threaded: bool):
-        if not all(key in self for key in keys):
+    def _dispatch_automatic(self, function: Callable, input: List[Key], output: List[Key], threaded: bool, *all_flags: Flags):
+        if not all(key in self for key in input):
             # May not dispatch; not all keys exist in the vault
+            return
+
+        if len(output) > 0 and all(key in self for key in output) and not Flags.is_set(Flags.auto_run_regardless_of_key_status, *all_flags):
+            # All output keys already exist in the vault and modifications are not permitted. Dispatch is impossible.
             return
 
         conditional: Callable = self.automatic_conditionals[function]
@@ -710,8 +722,8 @@ class VarVault(dict):
             return
 
         if threaded:
-            # Dispatch threaded functions.
-            thread = SubscriberThread(function, self)
+            # Dispatch automatic threaded functions.
+            thread = Automatic(function, self)
             self.running_tasks.add(thread)
             thread.start()
         else:

@@ -11,6 +11,8 @@ from typing import Union, Dict, Any, AnyStr, Literal
 from .keyring import Key
 from .minivault import MiniVault
 from .vaultstructs import VaultStructBase
+from .utils import assert_and_raise
+from .threadgroup import threaded_execution, create_functions
 
 
 class ModeProperties(dict):
@@ -20,7 +22,7 @@ class ModeProperties(dict):
         super(ModeProperties, self).__setattr__(key, value)
         super(ModeProperties, self).__setitem__(key, value)
 
-    def __init__(self, read_only: bool, live_update: bool, create: bool, load: bool, write: bool):
+    def __init__(self, read_only: bool, live_update: bool, create: bool, load: bool, write: bool, create_func: callable):
         self.initialized = False
         super().__init__()
         self.read_only = read_only
@@ -28,6 +30,7 @@ class ModeProperties(dict):
         self.create = create
         self.load = load
         self.write = write
+        self.create_func = create_func
         self.initialized = True
 
 
@@ -51,13 +54,43 @@ class BaseResource(abc.ABC):
         ResourceModes.APPEND_W_LIVE_UPDATE.value,
     }
 
+    @abc.abstractmethod
+    def read_mode(self):
+        """Meant to create the resource when read-mode is selected"""
+        pass
+
+    @abc.abstractmethod
+    def write_mode(self):
+        """Meant to crete the resource when write-mode is selected"""
+        pass
+
+    @abc.abstractmethod
+    def append_mode(self):
+        """Meant to crete the resource when append-mode is selected"""
+        pass
+
+    @abc.abstractmethod
+    def read_live_update_mode(self):
+        """Meant to crete the resource when read-with-live-update-mode is selected"""
+        pass
+
+    @abc.abstractmethod
+    def write_live_update_mode(self):
+        """Meant to crete the resource when write-with-live-update-mode is selected"""
+        pass
+
+    @abc.abstractmethod
+    def append_live_update_mode(self):
+        """Meant to crete the resource when append-with-live-update-mode is selected"""
+        pass
+
     MODE_MAPPING: Dict[str, ModeProperties] = {
-        ResourceModes.READ.value:                  ModeProperties(read_only=True,  live_update=False, create=False, load=True,  write=False),
-        ResourceModes.WRITE.value:                 ModeProperties(read_only=False, live_update=False, create=True,  load=False, write=True),
-        ResourceModes.APPEND.value:                ModeProperties(read_only=False, live_update=False, create=True,  load=True,  write=True),
-        ResourceModes.READ_W_LIVE_UPDATE.value:    ModeProperties(read_only=True,  live_update=True,  create=False, load=True,  write=False),
-        ResourceModes.WRITE_W_LIVE_UPDATE.value:   ModeProperties(read_only=False, live_update=True,  create=True,  load=False, write=True),
-        ResourceModes.APPEND_W_LIVE_UPDATE.value:  ModeProperties(read_only=False, live_update=True,  create=True,  load=True,  write=True)
+        ResourceModes.READ.value:                  ModeProperties(read_only=True,  live_update=False, create=False, load=True,  write=False, create_func=read_mode),
+        ResourceModes.WRITE.value:                 ModeProperties(read_only=False, live_update=False, create=True,  load=False, write=True,  create_func=write_mode),
+        ResourceModes.APPEND.value:                ModeProperties(read_only=False, live_update=False, create=True,  load=True,  write=True,  create_func=append_mode),
+        ResourceModes.READ_W_LIVE_UPDATE.value:    ModeProperties(read_only=True,  live_update=True,  create=False, load=True,  write=False, create_func=read_live_update_mode),
+        ResourceModes.WRITE_W_LIVE_UPDATE.value:   ModeProperties(read_only=False, live_update=True,  create=True,  load=False, write=True,  create_func=write_live_update_mode),
+        ResourceModes.APPEND_W_LIVE_UPDATE.value:  ModeProperties(read_only=False, live_update=True,  create=True,  load=True,  write=True,  create_func=append_live_update_mode)
     }
 
     def __init__(self, path: Union[AnyStr, Any], mode: Union[Literal["r", "w", "a", "r+", "w+", "a+"], ResourceModes] = "r"):
@@ -79,6 +112,7 @@ class BaseResource(abc.ABC):
         if isinstance(mode, ResourceModes):
             mode = mode.value
         self.mode = mode
+        assert_and_raise(self.mode in self.POSSIBLE_MODES, ValueError(f"Invalid mode: {self.mode}. Must be one of the following: {self.POSSIBLE_MODES}"))
         if self.mode not in self.POSSIBLE_MODES:
             raise ValueError(f"Invalid mode: {self.mode}. Must be one of the following: {self.POSSIBLE_MODES}")
 
@@ -103,7 +137,6 @@ class BaseResource(abc.ABC):
 
     def create_mv(self, **keys: Key) -> MiniVault:
         f"""Creates a {MiniVault}-object from a file by loading the vault from the file using the keyring."""
-        from varvault import concurrent_execution
 
         vault_file_data = self.read()
 
@@ -112,7 +145,7 @@ class BaseResource(abc.ABC):
         # Get the keys from the keyring as a list.
         return_vault_data = dict()
 
-        async def build(key_in_file: str):
+        def build(key_in_file: str):
             if key_in_file not in keys:
                 return
             key: Key = keys[key_in_file]
@@ -125,9 +158,12 @@ class BaseResource(abc.ABC):
                     assert key.valid_type is None or isinstance(vault_file_data[key_in_file], key.valid_type), f"Key type missmatch ({key}; Valid type {key.valid_type}, actual type: {type(vault_file_data[key_in_file])}"
                     return_vault_data[key] = vault_file_data[key_in_file]
 
-        concurrent_execution(build, vault_file_data.keys())
+        threaded_execution(create_functions(build, vault_file_data.keys()))
 
         return MiniVault(**return_vault_data)
+
+    def create(self):
+        getattr(self, self.mode_properties.create_func.__name__)()
 
     @property
     @abc.abstractmethod
@@ -139,11 +175,6 @@ class BaseResource(abc.ABC):
     @abc.abstractmethod
     def state(self):
         """Meant to return the state of the resource, such as a hash of the resource."""
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def create(self):
-        """Meant to create the resource to store the vault in a database."""
         raise NotImplementedError()
 
     @property

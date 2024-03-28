@@ -1,9 +1,10 @@
 import json
 import tempfile
 import threading
+import time
 
 from commons import *
-
+from tests.notif_reader import NotifReader
 
 vault_file_new = f"{DIR}/new-vault.json"
 vault_file_new_secondary = f"{DIR}/new-vault-secondary.json"
@@ -119,3 +120,34 @@ class TestLiveUpdate:
         resource.update_state()
 
         assert resource.last_known_state == resource.cached_state
+
+
+class TestConcurrency:
+    def test_read_write_concurrency(self):
+        """
+        Test to start a process to write to a file, then have multiple threads reading that file for changes.
+
+        :return:
+        """
+        attempts = 100
+        attempts_made = 0
+        while attempts_made < attempts:
+            services = 1000
+            service_list = [f"service-{n}" for n in range(services)]
+            notif_reader = NotifReader(vault_path=vault_file_new_secondary, services=services, do_sleep=False)
+            timeout = services
+            start = time.time()
+            services_found = list()
+            def find_notifs(service):
+                notifs = None
+                while not notifs and time.time() - start < timeout:
+                    notifs = notif_reader.get_notifs(service)
+                varvault.assert_and_raise(notifs is not None, TimeoutError(f"Service-{service} not found in {timeout} seconds"))
+                services_found.append(notifs['service'])
+
+            varvault.threaded_execution([varvault.create_function(find_notifs, service) for service in service_list], max_workers=int(services / 10))
+
+            assert len(services_found) == services, f"Expected {services} services, but found {len(services_found)}"
+            assert all([service in services_found for service in service_list]), f"Expected all services to be found, but some were missing"
+            attempts_made += 1
+            logger.info(f"Attempt {attempts_made} successful")

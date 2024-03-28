@@ -5,9 +5,9 @@ import logging
 logger = logging.getLogger("pytest")
 
 DIR = os.path.dirname(os.path.realpath(__file__))
-temp_path = [os.path.dirname(DIR)]
-temp_path.extend(sys.path)
-sys.path = temp_path
+ROOT_DIR = os.path.dirname(DIR)
+# The following change to sys.path ensures varvault is imported from the source code, not the installed package.
+sys.path = [ROOT_DIR] + sys.path
 
 
 import varvault

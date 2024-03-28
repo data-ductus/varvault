@@ -22,37 +22,36 @@ class XmlResource(varvault.BaseResource):
     def resource(self) -> TextIO:
         return self.file_io
 
-    def create(self) -> None:
-        """Creates the resource self.file_io for this handler which we'll use to read and write to."""
-        path = self.path
-        assert path, "Path is not defined"
-        dirname = os.path.dirname(path)
+    def dir_of_path(self) -> str:
+        return os.path.dirname(self.path) or os.getcwd()
 
-        create_dir = lambda: os.makedirs(dirname, exist_ok=True) if dirname else None
-        write = lambda: self.do_write({})
-
-        if self.mode_properties.create and not self.mode_properties.load:
-            create_dir()
-            write()
-
-        elif self.mode_properties.load and self.mode_properties.create:
-            if not self.exists():
-                create_dir()
-                write()
-
-        elif self.mode_properties.load and not self.mode_properties.create:
-            try:
-                self.do_read()
-            except Exception as e:
-                if not self.mode_properties.live_update:
-                    raise ResourceNotFoundError(f"Unable to read from resource at {path} (mode is {self.mode})", self) from e
-                else:
-                    return
-        else:
-            raise NotImplementedError(f"Mode {self.mode} is not valid ({self.mode_properties})")
-
-        self.file_io = open(self.path, "r+")
+    def read_mode(self):
+        varvault.assert_and_raise(os.path.exists(self.path), ResourceNotFoundError(f"Unable to read from resource at {self.path} (mode is {self.mode})", self))
+        self.file_io = open(self.path, "r")
         self.file_io.close()
+
+    def write_mode(self):
+        os.makedirs(self.dir_of_path(), exist_ok=True)
+        self.file_io = open(self.path, "w")
+        self.file_io.close()
+        self.do_write({})
+
+    def append_mode(self):
+        os.makedirs(self.dir_of_path(), exist_ok=True)
+        self.file_io = open(self.path, "a")
+        self.file_io.close()
+        self.do_write({})
+
+    def read_live_update_mode(self):
+        os.makedirs(self.dir_of_path(), exist_ok=True)
+        if os.path.exists(self.path):
+            self.read_mode()
+
+    def write_live_update_mode(self):
+        self.write_mode()
+
+    def append_live_update_mode(self):
+        self.append_mode()
 
     @property
     def state(self):

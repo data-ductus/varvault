@@ -33,15 +33,30 @@ class VaultStructList(varvault.VaultStructListBase):
         self.value_1 = value_1
         self.value_2 = value_2
 
-        self.extend([value_1, value_2])
+    def internal_function(self):
+        pass
+
+    @classmethod
+    def create(cls, vault_key, vault_value):
+        return VaultStructList(*vault_value)
+
+
+class VaultStructSet(varvault.VaultStructListBase):
+    def __init__(self, value_1: str, value_2: int, *args):
+        super(VaultStructSet, self).__init__(*args)
+        # This is a set and the order is not guaranteed
+        assert isinstance(value_1, (str, int))
+        assert isinstance(value_2, (str, int))
+
+        self.value_1 = value_1
+        self.value_2 = value_2
 
     def internal_function(self):
         pass
 
     @classmethod
     def create(cls, vault_key, vault_value):
-        obj = VaultStructList(*vault_value)
-        return obj
+        return VaultStructSet(*vault_value)
 
 
 class VaultStructString(varvault.VaultStructStringBase):
@@ -57,8 +72,7 @@ class VaultStructString(varvault.VaultStructStringBase):
 
     @classmethod
     def create(cls, vault_key, vault_value):
-        obj = VaultStructString(string_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-a-string")
-        return obj
+        return VaultStructString(string_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-a-string")
 
 
 class VaultStructFloat(varvault.VaultStructFloatBase):
@@ -74,8 +88,7 @@ class VaultStructFloat(varvault.VaultStructFloatBase):
 
     @classmethod
     def create(cls, vault_key, vault_value):
-        obj = VaultStructFloat(float_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-a-float")
-        return obj
+        return VaultStructFloat(float_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-a-float")
 
 
 class VaultStructInt(varvault.VaultStructIntBase):
@@ -91,8 +104,7 @@ class VaultStructInt(varvault.VaultStructIntBase):
 
     @classmethod
     def create(cls, vault_key, vault_value):
-        obj = VaultStructInt(int_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-an-int")
-        return obj
+        return VaultStructInt(int_value=vault_value, extra_value="extra_value-cannot-possibly-be-saved-to-an-int")
 
 
 class VaultStructDictInvalid(varvault.VaultStructDictBase):
@@ -110,6 +122,7 @@ class VaultStructDictInvalid(varvault.VaultStructDictBase):
 class KeyringVaultStruct(varvault.Keyring):
     key_vault_struct_dict = varvault.Key("key_vault_struct_dict", valid_type=VaultStructDict)
     key_vault_struct_list = varvault.Key("key_vault_struct_list", valid_type=VaultStructList)
+    key_vault_struct_set = varvault.Key("key_vault_struct_set", valid_type=VaultStructSet)
     key_vault_struct_string = varvault.Key("key_vault_struct_string", valid_type=VaultStructString)
     key_vault_struct_float = varvault.Key("key_vault_struct_float", valid_type=VaultStructFloat)
     key_vault_struct_int = varvault.Key("key_vault_struct_int", valid_type=VaultStructInt)
@@ -153,13 +166,36 @@ class TestVaultStructs:
 
         _set()
         assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_list), VaultStructList)
-        logger.info(vault.get(KeyringVaultStruct.key_vault_struct_list))
+        # value_1 exists as an attribute and in the list
+        assert hasattr(vault.get(KeyringVaultStruct.key_vault_struct_list), "value_1") and "v1" in vault.get(KeyringVaultStruct.key_vault_struct_list)
+        # value_2 exists as an attribute and in the list
+        assert hasattr(vault.get(KeyringVaultStruct.key_vault_struct_list), "value_2") and 1 in vault.get(KeyringVaultStruct.key_vault_struct_list)
 
         from_vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="r"))
         assert isinstance(from_vault.get(KeyringVaultStruct.key_vault_struct_list), VaultStructList)
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_list), "internal_function")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_list), "value_1")
         assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_list), "value_2")
+
+    def test_vault_struct_set(self):
+        vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))
+
+        @vault.manual(output=KeyringVaultStruct.key_vault_struct_set)
+        def _set():
+            return VaultStructSet("v1", 1)
+
+        _set()
+        assert isinstance(vault.get(KeyringVaultStruct.key_vault_struct_set), VaultStructSet)
+        # value_1 exists as an attribute and in the list
+        assert hasattr(vault.get(KeyringVaultStruct.key_vault_struct_set), "value_1") and "v1" in vault.get(KeyringVaultStruct.key_vault_struct_set)
+        # value_2 exists as an attribute and in the list
+        assert hasattr(vault.get(KeyringVaultStruct.key_vault_struct_set), "value_2") and 1 in vault.get(KeyringVaultStruct.key_vault_struct_set)
+
+        from_vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="r"))
+        assert isinstance(from_vault.get(KeyringVaultStruct.key_vault_struct_set), VaultStructSet)
+        assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_set), "internal_function")
+        assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_set), "value_1")
+        assert hasattr(from_vault.get(KeyringVaultStruct.key_vault_struct_set), "value_2")
 
     def test_vault_struct_string(self):
         vault = varvault.create(keyring=KeyringVaultStruct, resource=varvault.JsonResource(vault_file_new, mode="w"))

@@ -64,15 +64,11 @@ class KeyringLargeScale(varvault.Keyring):
     log_out_dir = varvault.Key("log_out_dir", valid_type=str)
     hostsfile_path = varvault.Key("hostsfile_path", valid_type=str)
     influxdb_ip = varvault.Key("influxdb_ip", valid_type=str)
-    influxdb_port = varvault.Key("influxdb_port", valid_type=str)
     influxdb_database = varvault.Key("influxdb_database", valid_type=str)
     grafana_hostname = varvault.Key("grafana_hostname", valid_type=str)
     grafana_port = varvault.Key("grafana_port", valid_type=str)
-    grafana_credentials = varvault.Key("grafana_credentials", valid_type=str)
-    grafana_auth_token = varvault.Key("grafana_auth_token", valid_type=str)
     result = varvault.Key("result", valid_type=ResultDict)
     result_to_upload = varvault.Key("result_to_upload", valid_type=ResultToUploadDict)
-    installer_local = varvault.Key("installer_local", valid_type=str)
     installer_local_pre_upgrade = varvault.Key("installer_local_pre_upgrade", valid_type=str)
     installer_local_post_upgrade = varvault.Key("installer_local_post_upgrade", valid_type=str)
     group_installers = varvault.Key("group_installers", valid_type=GroupInstallers)
@@ -88,8 +84,6 @@ class KeyringLargeScale(varvault.Keyring):
     build_id = varvault.Key("build_id", valid_type=str)
     test_id = varvault.Key("test_id", valid_type=str)
     test_description = varvault.Key("test_description", valid_type=str)
-    instance_count = varvault.Key("instance_count", valid_type=str)
-    container_count = varvault.Key("container_count", valid_type=str)
     version = varvault.Key("version", valid_type=str)
     branch = varvault.Key("branch", valid_type=str)
     branch_custom = varvault.Key("branch_custom", valid_type=str, can_be_none=True)
@@ -125,48 +119,8 @@ class TestLargeScaleVault:
         logger.info("Created the vault from file")
         # We load from existing and write to new, so just check that the new file contains the correct data
         contents = json.load(open(vault_file_new))
-        assert KeyringLargeScale.workspace_dir in contents
-        assert KeyringLargeScale.test_time in contents
-        assert KeyringLargeScale.cpus_per_container in contents
-        assert KeyringLargeScale.docker_network in contents
-        assert KeyringLargeScale.branch in contents
-        assert KeyringLargeScale.descriptor_file in contents
-        assert KeyringLargeScale.logname in contents
-        assert KeyringLargeScale.log_out_dir in contents
-        assert KeyringLargeScale.hostsfile_path in contents
-        assert KeyringLargeScale.grafana_port in contents
-        assert KeyringLargeScale.influxdb_database in contents
-        assert KeyringLargeScale.installer_local_pre_upgrade in contents
-        assert KeyringLargeScale.installer_local_post_upgrade in contents
-        assert KeyringLargeScale.group_installers in contents
-        assert KeyringLargeScale.branch_custom in contents
-        assert KeyringLargeScale.target_env in contents
-        assert KeyringLargeScale.start_time in contents
-        assert KeyringLargeScale.version in contents
-        assert KeyringLargeScale.version_pre_upgrade in contents
-        assert KeyringLargeScale.version_ha1 in contents
-        assert KeyringLargeScale.version_ha2 in contents
-        assert KeyringLargeScale.version_ha3 in contents
-        assert KeyringLargeScale.version_upgrade_ha1 in contents
-        assert KeyringLargeScale.version_upgrade_ha2 in contents
-        assert KeyringLargeScale.version_upgrade_ha3 in contents
-        assert KeyringLargeScale.build_id in contents
-        assert KeyringLargeScale.test_id in contents
-        assert KeyringLargeScale.test_description in contents
-        assert KeyringLargeScale.branch_ha1 in contents
-        assert KeyringLargeScale.branch_ha2 in contents
-        assert KeyringLargeScale.branch_ha3 in contents
-        assert KeyringLargeScale.branch_upgrade_ha1 in contents
-        assert KeyringLargeScale.branch_upgrade_ha2 in contents
-        assert KeyringLargeScale.branch_upgrade_ha3 in contents
-        assert KeyringLargeScale.docker_network_existed_on_start in contents
-        assert KeyringLargeScale.influxdb_ip in contents
-        assert KeyringLargeScale.grafana_hostname in contents
-        assert KeyringLargeScale.end_time in contents
-        assert KeyringLargeScale.validation_result in contents
-        assert KeyringLargeScale.validation_errors in contents
-        assert KeyringLargeScale.result_to_upload in contents
-        assert KeyringLargeScale.result in contents
+        for key in KeyringLargeScale.get_keys():
+            assert key in contents, f"Key {key} not in vault"
 
     def test_get_multiple(self):
         resource_mv = varvault.JsonResource(large_vault_file, mode="r").create_mv(**KeyringLargeScale.get_keys())
@@ -293,7 +247,7 @@ class TestLargeScaleVault:
         # Note the use of varvault.Flags.silent here. It will speed up the processing significantly.
         # It brings processing down from 3 seconds to 0.6 seconds for 500 parallel requests.
         @vault.manual(varvault.Flags.silent, input=keys)
-        async def _get(thread_id, **kwargs):
+        def _get(thread_id, **kwargs):
             assert isinstance(thread_id, int)
             assert len([k for k in keys if k in kwargs]) == len(keys)
 
@@ -301,7 +255,7 @@ class TestLargeScaleVault:
         thread_ids = [i for i in range(num_threads)]
         logger.info(f"Number of threads: {len(thread_ids)}")
         start = time.time()
-        varvault.concurrent_execution(_get, thread_ids)
+        varvault.threaded_execution(varvault.create_functions(_get, thread_ids))
         logger.info(f"Time (seconds): {time.time() - start}")
 
     def test_live_update(self):

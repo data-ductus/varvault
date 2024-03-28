@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os.path
 import re
@@ -847,7 +848,7 @@ class TestVault:
             raise ValueError(key_valid_type_is_str)
 
         with pytest.raises(ValueError) as e:
-            varvault.concurrent_execution(async_func, [1])
+            asyncio.run(async_func(1))
         assert "valid" in str(e.value.args[0]), e
 
         @vault.manual(input=Keyring.key_valid_type_is_str)
@@ -867,7 +868,7 @@ class TestVault:
             raise ValueError(key_valid_type_is_str)
 
         with pytest.raises(ValueError) as e:
-            varvault.concurrent_execution(async_func, [1])
+            asyncio.run(async_func(1))
         assert "valid" in str(e.value.args[0]), e
 
         @vault.manual(varvault.Flags.no_error_logging, input=Keyring.key_valid_type_is_str)
@@ -1027,14 +1028,14 @@ class TestVault:
         resource.create()
         open(vault_file_new, "w").write("invalid")
 
-        try:
+        with pytest.raises(varvault.ResourceNotFoundError) as e:
             resource.read()
-        except varvault.ResourceNotFoundError as e:
-            assert "Failed to read from the resource" in str(e), e
+        assert "Failed to read from the resource" in str(e), e
         resource = varvault.JsonResource(vault_file_new, mode="r")
+        os.remove(vault_file_new)
         with pytest.raises(varvault.ResourceNotFoundError) as e:
             resource.create()
-        assert "Unable to read from resource at" in str(e.value.args[0]), e
+        assert "Unable to read from resource at" in str(e), e
 
     def test_append_resource_mode(self):
         resource = varvault.JsonResource(vault_file_new, mode="a")
@@ -1070,3 +1071,22 @@ class TestVault:
         assert vault.get(KeyringKeyValidationFunction.name) == "will-be-modified-to-dashes", vault.get(KeyringKeyValidationFunction.name)
         assert vault.get(KeyringKeyValidationFunction.path) == "will_be_modified_to_underscores", vault.get(KeyringKeyValidationFunction.path)
 
+    def test_run_in_async_scope(self):
+        async def run():
+            vault = varvault.create(keyring=Keyring, resource=varvault.JsonResource(vault_file_new, mode="w"))
+            @vault.manual(output=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int))
+            def _set():
+                return "valid", 1
+
+            _set()
+
+            @vault.automatic(input=(Keyring.key_valid_type_is_str, Keyring.key_valid_type_is_int), threaded=True)
+            def _use(key_valid_type_is_str=varvault.AssignedByVault, key_valid_type_is_int=varvault.AssignedByVault):
+                assert key_valid_type_is_str == "valid"
+                assert key_valid_type_is_int == 1
+
+            vault.await_running_tasks(timeout=1)
+
+        asyncio.run(run())
+        assert os.path.exists(vault_file_new), f"The file {vault_file_new} should have been created"
+        assert json.load(open(vault_file_new)) == {Keyring.key_valid_type_is_str: "valid", Keyring.key_valid_type_is_int: 1}, "The file should contain the correct values"

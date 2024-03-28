@@ -80,3 +80,7 @@ class Flags(enum.Enum):
         return intermediate
     """
     output_key_replaces_input_key = enum.auto()
+
+    f"""Flag to tell varvault to run a function decorated with "automatic" regardless of the status of the output key(s). When a python process is re-created, automatic functions will not run again 
+    if the output keys are set to the vault already. This flag will allow such functions to run regardless, though this is not recommended."""
+    auto_run_regardless_of_key_status = enum.auto()
